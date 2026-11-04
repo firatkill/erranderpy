@@ -21,6 +21,8 @@ yeterli olmalı.
 - **Kolay kurulum:** repoyu klonlayan biri 2 komutla botu ayağa kaldırabilmeli (bkz. §12)
 - **Çoklu LLM:** Anthropic, Gemini, DeepSeek, OpenAI; hangi anahtar varsa o kullanılır (bkz. §5)
 
+- **Kendini genişletme (Aşama 3):** bot yapamadığı bir şey için yeni bir yetenek önerir, onayla ekler (ADR-0012..0014)
+
 **v1 kapsamı dışında (sonra):** WhatsApp, çok kullanıcı, sesli mesaj, belge/RAG agent'ı,
 harcama agent'ı, web arayüzü.
 
@@ -377,8 +379,9 @@ devam eder (polling kaçan mesajları da alır). Kesintisiz çalışma isteyen k
 | **0. LLM katmanı + model seçimi** | 2 adaptör, sağlayıcı seçimi, 30 mesajlık Türkçe eval seti, `make compare` | 4 sağlayıcı sözleşme testlerini geçiyor, karşılaştırma raporu hazır |
 | **1. Çekirdek + shopping + kurulum** ✅ | `start.sh`, sihirbaz, eşleştirme, Telegram, registry, router, runtime, tracing, shopping agent, `make doctor` | Temiz klondan 2 komutla bot çalışıyor; §2'deki alışveriş satırları geçiyor |
 | **2. tasks + scheduler** ✅ | tasks agent, alışkanlıklar, gece işi, akşam özeti | §2'nin tamamı geçiyor, eval ≥ %90 |
-| **3. Oncall** | oncall agent, günlük rapor, chaos testleri | 5 enjekte hatanın ≥ 4'ünü doğru teşhis |
-| **4. Platformlaşma + yayın** | `make new-agent`, 3. agent'ı 30 dakikada ekleme, Docker, README, demo videosu | Yeni agent çekirdeğe dokunmadan eklendi; repo herkese açık |
+| **3. Kendini genişleten bot** ✅ | builder agent, `kind: records`, kalıcı hatırlatıcılar, `/agents` | Örnek konuşma (takvim) gerçek modelle uçtan uca çalışıyor; eval ≥ %90 |
+| **4. Oncall** | oncall agent, günlük rapor, chaos testleri | 5 enjekte hatanın ≥ 4'ünü doğru teşhis |
+| **5. Platformlaşma + yayın** | `make new-agent`, 3. agent'ı 30 dakikada ekleme, Docker, README, demo videosu | Yeni agent çekirdeğe dokunmadan eklendi; repo herkese açık |
 
 ---
 

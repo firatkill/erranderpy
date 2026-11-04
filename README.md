@@ -10,11 +10,14 @@
   means adding a folder; the core never changes.
 - **Bring any LLM key.** Works with Anthropic, Gemini, DeepSeek or OpenAI — whichever API key you
   put in `.env` is used.
+- **It grows itself.** Ask for something it can't do yet ("11 kasımda 14:00'te AVM") and it proposes a
+  new ability (a calendar), adds it after you say yes, and handles your request. No code is generated:
+  it writes a validated YAML description and the platform builds the agent.
 - **It watches itself.** Every message is traced, and an on-call agent investigates errors and
   wrong decisions, then reports back to you on Telegram.
 - **Two commands to run.** `git clone` and `./start.sh`. No Docker, no database server.
 
-> 🚧 **Status: Stage 2.** Shopping list, tasks and daily habits work end to end, with an evening summary.
+> 🚧 **Status: Stage 3.** Shopping, tasks and habits, and abilities the bot adds to itself (with reminders).
 > The on-call agent comes next.
 > Follow progress in [SPEC.md](SPEC.md).
 
@@ -77,8 +80,9 @@ too easy to tell models apart, so harder cases are next.
 | 0 | Provider-agnostic LLM layer + Turkish eval set + model comparison | ✅ |
 | 1 | Core (router, agent runtime, tracing), shopping agent, `start.sh` setup | ✅ |
 | 2 | Tasks & habits agent, nightly scheduler, evening summary | ✅ |
-| 3 | On-call agent and chaos tests | ⏳ |
-| 4 | `make new-agent`, Docker, public release | ⏳ |
+| 3 | Self-extending bot: builder agent, declarative agents, reminders | ✅ |
+| 4 | On-call agent and chaos tests | ⏳ |
+| 5 | `make new-agent`, Docker, public release | ⏳ |
 
 ## License
 
