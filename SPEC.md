@@ -69,7 +69,7 @@ Veritabanına yazmak, tarih hesaplamak, liste biçimlendirmek deterministik Pyth
 | `core/router.py` | Kayıtlı agent'ların `description` + örneklerinden prompt kurar; çıktı: `[{agent, text}]` listesi (birleşik mesajları böler) |
 | `core/runtime.py` | Seçilen agent için tool-calling döngüsünü çalıştırır (maks. 5 adım) |
 | `core/registry.py` | `agents/` klasörünü tarar, her agent'ı otomatik yükler |
-| `core/llm.py` | Tek arayüz: `complete(messages, tools, schema)`. Arkada model değiştirilebilir |
+| `core/llm/` | Tek arayüz: `complete(system, messages, tools)`. Arkada model değiştirilebilir (bkz. §5) |
 | `core/memory.py` | Son 10 mesaj (kısa süreli) + `facts` tablosu (uzun süreli) |
 | `core/tracing.py` | Her adımı `traces` tablosuna yazar (bkz. §8) |
 | `scheduler.py` | Zamanlanmış işler |
@@ -163,24 +163,29 @@ Birden fazlası doluysa öncelik sırası:
 ### Mimari: iki adaptör, dört sağlayıcı
 
 ```
-core/llm/
-  base.py          # LLMProvider arayüzü: complete(messages, tools, json_schema) -> LLMResult
-  openai_compat.py # OpenAI, DeepSeek ve Gemini (OpenAI uyumlu uç noktası) — sadece base_url farklı
-  anthropic.py     # Anthropic native SDK (tool calling formatı farklı)
-  select.py        # .env'e bakıp sağlayıcıyı seçer
-  pricing.py       # model başına fiyat → trace'lerde maliyet hesabı
+erranderpy/core/llm/
+  base.py              # ortak tipler + LLMProvider arayüzü: complete(system, messages, tools) -> LLMResult
+  defaults.py          # sağlayıcı listesi, öncelik, varsayılan modeller, sağlayıcı tuhaflıkları
+  openai_compat.py     # OpenAI, DeepSeek ve Gemini (OpenAI uyumlu uç noktası)
+  anthropic_native.py  # Anthropic native SDK (tool calling formatı farklı)
+  errors.py            # SDK hataları → ortak hata türleri (auth, rate_limit, timeout, ...)
+  select.py            # .env'e bakıp sağlayıcıyı seçer
+  pricing.py           # model başına fiyat → trace'lerde maliyet hesabı
 ```
 
-- `LLMResult` sağlayıcıdan bağımsız: `text`, `tool_calls`, `tokens_in`, `tokens_out`, `cost_usd`, `latency_ms`, `raw`
+- `LLMResult` sağlayıcıdan bağımsız: `message` (metin + tool çağrıları), `tokens_in`, `tokens_out`, `cost_usd`, `latency_ms`
 - Agent'lar ve router sağlayıcıyı **bilmez**; sadece `LLMProvider` ile konuşur
-- Her adaptör aynı sözleşme testlerinden geçer (`tests/llm_contract/`): basit cevap, tool çağrısı, JSON şeması, hata/timeout
+- `temperature` yok; karar çağrılarında her sağlayıcıda reasoning en düşük seviyede (ADR-0007)
+- `tool_choice` sadece `auto` / `none`; tool çağrısı prompt'la istenir, sonuç doğrulanır (ADR-0006)
+- Her adaptör aynı sözleşme testlerinden geçer (`tests/live/test_contract.py`, `make test-live`): düz cevap, tool çağrısı, tool sonucu döngüsü
 - **Kademeli model (v2):** `agent.yaml → model` ile belirli bir agent'a daha güçlü model verilebilir
 
 ### Model karşılaştırması (Aşama 0)
 
-`make compare` → `.env`'de anahtarı bulunan **tüm** sağlayıcılarda §9'daki Türkçe eval setini koşar;
-doğruluk, JSON/tool hatası oranı, p50/p95 gecikme ve mesaj başı maliyeti tablo halinde basar
-(`reports/model-compare-<tarih>.md`). Sonuç README'de yayınlanır.
+`make compare` → `.env`'de anahtarı bulunan **tüm** sağlayıcılarda Türkçe eval setini
+(`evals/router_tr.yaml` 30 örnek, `evals/tools_tr.yaml` 16 örnek) koşar; doğruluk, hata oranı,
+p50/p95 gecikme ve çağrı başı maliyeti tablo halinde basar (`reports/eval-<tarih>.md`).
+Sonuç README'de yayınlanır.
 
 ---
 
