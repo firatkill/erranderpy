@@ -33,11 +33,12 @@ def test_router_suite_end_to_end():
     assert by_id["r23"].passed  # multi-request message
 
     summary = summarize("fake / fake-1", results)
-    assert summary.total == 30
-    assert summary.router_acc == 28 / 30
+    n = len(load_cases("router"))  # the set grows with real use; don't hard-code its size
+    assert summary.total == n
+    assert summary.router_acc == (n - 2) / n
     assert summary.errors["timeout"] == 1
     assert summary.p50_ms == 120.0
 
     report = markdown_report([(summary, results)], ["router"], 1)
-    assert "| fake / fake-1 | 93% |" in report
+    assert f"| fake / fake-1 | {(n - 2) / n * 100:.0f}% |" in report
     assert "| r27 | selam |" in report
