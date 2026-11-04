@@ -1,0 +1,24 @@
+# Secrets — never commit
+.env
+
+# Runtime data (SQLite database, logs)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Generated reports (model comparisons are committed manually when worth sharing)
+reports/*.tmp.md
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
