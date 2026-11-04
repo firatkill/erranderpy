@@ -65,13 +65,14 @@ Veritabanına yazmak, tarih hesaplamak, liste biçimlendirmek deterministik Pyth
 
 | Bileşen | Görev |
 |---|---|
-| `gateway/telegram.py` | Mesajı alır, izinli kullanıcı mı kontrol eder, `trace_id` üretir, cevabı gönderir |
-| `core/router.py` | Kayıtlı agent'ların `description` + örneklerinden prompt kurar; çıktı: `[{agent, text}]` listesi (birleşik mesajları böler) |
-| `core/runtime.py` | Seçilen agent için tool-calling döngüsünü çalıştırır (maks. 5 adım) |
-| `core/registry.py` | `agents/` klasörünü tarar, her agent'ı otomatik yükler |
+| `erranderpy/gateway/telegram.py` | Mesajı alır, sahibi mi kontrol eder, "yazıyor…" gösterir, cevabı gönderir |
+| `erranderpy/assistant.py` | Telegram'dan bağımsız akış: geçmiş → router → agent'lar → cevap; `trace_id` üretir |
+| `erranderpy/core/router.py` | Kayıtlı agent'ların `description` + örneklerinden prompt kurar; çıktı: `[{agent, text}]` listesi (birleşik mesajları böler, aynı agent'a gidenleri birleştirir) |
+| `erranderpy/core/runtime.py` | Seçilen agent için tool-calling döngüsünü çalıştırır (maks. 5 adım, erken çıkış; ADR-0008) |
+| `erranderpy/core/registry.py` | `agents/` klasörünü tarar, her agent'ı otomatik yükler (ADR-0009) |
 | `core/llm/` | Tek arayüz: `complete(system, messages, tools)`. Arkada model değiştirilebilir (bkz. §5) |
-| `core/memory.py` | Son 10 mesaj (kısa süreli) + `facts` tablosu (uzun süreli) |
-| `core/tracing.py` | Her adımı `traces` tablosuna yazar (bkz. §8) |
+| `erranderpy/core/db.py` | SQLite; `messages` tablosu = kısa süreli hafıza (son 6 mesaj). `facts` (uzun süreli) Aşama 2'de |
+| `erranderpy/core/tracing.py` | Her adımı `traces` tablosuna yazar (bkz. §8); Telegram'da `/trace` |
 | `scheduler.py` | Zamanlanmış işler |
 | `oncall/` | Oncall agent'ı (kendisi de bir agent, ama ayrı kanaldan konuşur) |
 
@@ -86,7 +87,8 @@ agents/
   shopping/
     agent.yaml      # kimlik, açıklama, örnekler, prompt
     tools.py        # @tool ile işaretli Python fonksiyonları
-    models.py       # (opsiyonel) bu agent'ın tabloları
+    schema.sql      # (opsiyonel) bu agent'ın tabloları: CREATE TABLE IF NOT EXISTS
+    messages.yaml   # (opsiyonel) cevap şablonları (tr, en)
     evals.yaml      # bu agent'ın test mesajları ve beklenen sonuçlar
   tasks/
     ...
@@ -101,8 +103,8 @@ examples:              # router'a few-shot örnek olarak gider
   - "süt almam lazım"
   - "listede ne var"
   - "ekmeği aldım"
-model: default         # veya belirli bir model (bkz. §5)
-confirm_tools: [clear_list]   # bu tool'lar çalışmadan önce kullanıcıdan onay alınır
+model: default         # (planlanan, v2) veya belirli bir model (bkz. §5)
+confirm_tools: [clear_list]   # (planlanan) bu tool'lar çalışmadan önce kullanıcıdan onay alınır
 system_prompt: |
   Sen kullanıcının alışveriş listesini yöneten asistansın. Ürün adlarını
   yalın halde kaydet ("zeytinyağını" → "zeytinyağı"). Kısa ve samimi cevap ver.
@@ -111,7 +113,7 @@ system_prompt: |
 ### `tools.py`
 
 ```python
-from core.tools import tool, ToolContext
+from erranderpy.core.tools import ToolContext, tool
 
 @tool
 def add_items(ctx: ToolContext, items: list[Item]) -> str:
@@ -133,7 +135,7 @@ def list_items(ctx: ToolContext, only_pending: bool = True) -> str:
 1. `agents/<isim>/` klasörünü kopyala (`agents/_template`)
 2. `agent.yaml` doldur, `tools.py` yaz
 3. `evals.yaml`'a 5–10 örnek mesaj ekle
-4. `make eval AGENT=<isim>` → router doğru yönlendiriyor mu, tool'lar doğru çağrılıyor mu
+4. `make test` (agent yükleniyor mu?) ve `make eval` (router ve tool kararları doğru mu?)
 5. Botu yeniden başlat; registry otomatik yükler
 
 ---
@@ -268,7 +270,7 @@ bozan bir commit at → oncall doğru teşhisi koyuyor mu?
 
 ## 11. Teknoloji
 
-Python 3.12 · `python-telegram-bot` (polling) · SQLite (+ SQLModel) · APScheduler · Pydantic ·
+Python 3.12 · `python-telegram-bot` (polling) · SQLite (stdlib `sqlite3`, düz SQL) · APScheduler · Pydantic ·
 `openai` + `anthropic` SDK'ları · pytest · `uv` (Python ve paket yönetimi) · Docker Compose (VPS için)
 
 Dış servis yok: veritabanı tek bir dosya (`data/assistant.db`), ayrı bir sunucu kurulmaz.
@@ -364,7 +366,7 @@ devam eder (polling kaçan mesajları da alır). Kesintisiz çalışma isteyen k
 | Aşama | Çıktı | "Bitti" tanımı |
 |---|---|---|
 | **0. LLM katmanı + model seçimi** | 2 adaptör, sağlayıcı seçimi, 30 mesajlık Türkçe eval seti, `make compare` | 4 sağlayıcı sözleşme testlerini geçiyor, karşılaştırma raporu hazır |
-| **1. Çekirdek + shopping + kurulum** | `start.sh`, sihirbaz, eşleştirme, Telegram, registry, router, runtime, tracing, shopping agent | Temiz klondan 2 komutla bot çalışıyor; §2'deki alışveriş satırları geçiyor |
+| **1. Çekirdek + shopping + kurulum** ✅ | `start.sh`, sihirbaz, eşleştirme, Telegram, registry, router, runtime, tracing, shopping agent, `make doctor` | Temiz klondan 2 komutla bot çalışıyor; §2'deki alışveriş satırları geçiyor |
 | **2. tasks + scheduler** | tasks agent, alışkanlıklar, gece işi, akşam özeti | §2'nin tamamı geçiyor, eval ≥ %90 |
 | **3. Oncall** | oncall agent, günlük rapor, chaos testleri | 5 enjekte hatanın ≥ 4'ünü doğru teşhis |
 | **4. Platformlaşma + yayın** | `make new-agent`, 3. agent'ı 30 dakikada ekleme, Docker, README, demo videosu | Yeni agent çekirdeğe dokunmadan eklendi; repo herkese açık |
