@@ -1,6 +1,6 @@
 from erranderpy.core.llm.pricing import cost_usd
 from erranderpy.evals.runner import load_cases
-from erranderpy.evals.scoring import match, normalize, percentile, same_agents, tr_lower
+from erranderpy.evals.scoring import match, normalize, percentile, same_agents, tr_lower  # noqa: F401
 
 
 def test_turkish_lowercase():

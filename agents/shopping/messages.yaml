@@ -1,0 +1,24 @@
+# Replies are written by code from these templates, not by the LLM:
+# consistent, instant, and one LLM call cheaper (docs/decisions/0008-kod-yazar-onay-erken-cikis.md).
+tr:
+  added: "🛒 Ekledim: {items}."
+  updated: "✏️ Güncelledim: {items}."
+  already: "Zaten listede: {items}."
+  removed: "🗑️ Listeden çıkardım: {items}."
+  bought: "✅ Alındı: {items}."
+  not_found: "Listede bulamadım: {items}."
+  count: "Listede {count} ürün var."
+  list_header: "🛒 Alınacaklar:"
+  list_empty: "Listen boş 🎉"
+  bought_today: "Bugün aldıkların: {items}"
+en:
+  added: "🛒 Added: {items}."
+  updated: "✏️ Updated: {items}."
+  already: "Already on the list: {items}."
+  removed: "🗑️ Removed: {items}."
+  bought: "✅ Bought: {items}."
+  not_found: "Not on the list: {items}."
+  count: "{count} items on the list."
+  list_header: "🛒 To buy:"
+  list_empty: "Your list is empty 🎉"
+  bought_today: "Bought today: {items}"

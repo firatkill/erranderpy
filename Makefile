@@ -1,7 +1,13 @@
-.PHONY: help install test test-live eval compare
+.PHONY: help run doctor install test test-live eval compare
 
 help:  ## Show the available commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-10s %s\n", $$1, $$2}'
+
+run:  ## Start the bot (same as ./start.sh)
+	./start.sh
+
+doctor:  ## Check .env, Telegram token, LLM key, agents and database
+	uv run python -m erranderpy.doctor
 
 install:  ## Install Python and dependencies (uv)
 	uv sync

@@ -1,4 +1,7 @@
-# Tool eval: given the right agent, does the model call the right tool with the
+# Tool eval for agents that don't have a folder yet (prototypes in
+# erranderpy/evals/fixtures.py). Real agents keep their cases in agents/<name>/evals.yaml.
+#
+# Given the right agent, does the model call the right tool with the
 # right arguments?
 #
 # Argument matching (see erranderpy/evals/scoring.py):
@@ -8,39 +11,6 @@
 #   - only the keys written here are checked; extra keys are allowed
 suite: tools
 cases:
-  # --- shopping -----------------------------------------------------------
-  - id: t01
-    agent: shopping
-    message: "zeytinyağı almam lazım"
-    expect: {tool: add_items, args: {items: [{name: zeytinyağı}]}}
-  - id: t02
-    agent: shopping
-    message: "2 paket makarna ve süt ekle"
-    expect: {tool: add_items, args: {items: [{name: makarna, quantity: 2}, {name: süt}]}}
-  - id: t03
-    agent: shopping
-    message: "makarnayı aldım"
-    expect: {tool: mark_bought, args: {names: [makarna]}}
-  - id: t04
-    agent: shopping
-    message: "listede ne var?"
-    expect: {tool: list_items, args: {}}
-  - id: t05
-    agent: shopping
-    message: "sütü listeden çıkar, vazgeçtim"
-    expect: {tool: remove_items, args: {names: [süt]}}
-  - id: t06
-    agent: shopping
-    message: "domatesleri, biberi ve ekmeği aldım"
-    expect: {tool: mark_bought, args: {names: [domates, biber, ekmek]}}
-  - id: t07
-    agent: shopping
-    message: "deterjan bitti"
-    expect: {tool: add_items, args: {items: [{name: deterjan}]}}
-  - id: t08
-    agent: shopping
-    message: "3 tane avokado lazım"
-    expect: {tool: add_items, args: {items: [{name: avokado, quantity: 3}]}}
   # --- tasks --------------------------------------------------------------
   - id: t09
     agent: tasks

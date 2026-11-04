@@ -1,0 +1,28 @@
+# Tool eval cases for this agent: given a message routed here, does the model
+# call the right tool with the right arguments? Matching rules: evals/tools_tr.yaml.
+# Never copy these sentences into agent.yaml `examples`.
+cases:
+  - id: shop01
+    message: "zeytinyağı almam lazım"
+    expect: {tool: add_items, args: {items: [{name: zeytinyağı}]}}
+  - id: shop02
+    message: "2 paket makarna ve süt ekle"
+    expect: {tool: add_items, args: {items: [{name: makarna, quantity: 2}, {name: süt}]}}
+  - id: shop03
+    message: "makarnayı aldım"
+    expect: {tool: mark_bought, args: {names: [makarna]}}
+  - id: shop04
+    message: "listede ne var?"
+    expect: {tool: list_items, args: {}}
+  - id: shop05
+    message: "sütü listeden çıkar, vazgeçtim"
+    expect: {tool: remove_items, args: {names: [süt]}}
+  - id: shop06
+    message: "domatesleri, biberi ve ekmeği aldım"
+    expect: {tool: mark_bought, args: {names: [domates, biber, ekmek]}}
+  - id: shop07
+    message: "deterjan bitti"
+    expect: {tool: add_items, args: {items: [{name: deterjan}]}}
+  - id: shop08
+    message: "3 tane avokado lazım"
+    expect: {tool: add_items, args: {items: [{name: avokado, quantity: 3}]}}

@@ -10,18 +10,9 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from erranderpy.core.text import normalize, tr_lower
 
-def tr_lower(text: str) -> str:
-    """Lowercase Turkish correctly.
-
-    Python's str.lower() turns "I" into "i" and "İ" into "i̇" (i + combining
-    dot), both wrong for Turkish. We map the dotted/dotless pairs first.
-    """
-    return text.replace("I", "ı").replace("İ", "i").lower()
-
-
-def normalize(text: str) -> str:
-    return " ".join(tr_lower(text).split())
+__all__ = ["match", "normalize", "percentile", "same_agents", "tr_lower"]
 
 
 def match(expected: Any, actual: Any) -> bool:

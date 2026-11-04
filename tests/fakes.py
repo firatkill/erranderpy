@@ -52,3 +52,47 @@ class FakeAnthropicClient:
         if self._error:
             raise self._error
         return SimpleNamespace(content=self._content, usage=self._usage)
+
+
+class ScriptedLLM:
+    """An LLMProvider that plays back a list of answers, one per call.
+
+    Each item is an LLMResult, an Exception (raised), or a callable
+    (system, messages, tools) -> LLMResult. Every call is recorded.
+    """
+
+    name = "scripted"
+    model = "scripted-1"
+
+    def __init__(self, answers: list[Any]):
+        self.answers = list(answers)
+        self.calls: list[dict[str, Any]] = []
+
+    def complete(self, system, messages, tools=None, tool_choice="auto", max_tokens=2048):
+        self.calls.append({"system": system, "messages": list(messages), "tools": tools})
+        if not self.answers:
+            raise AssertionError("ScriptedLLM: no more answers scripted")
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        if callable(answer):
+            return answer(system, messages, tools)
+        return answer
+
+
+def tool_answer(*calls: tuple[str, dict], text: str = ""):
+    """An LLMResult in which the model calls the given tools: tool_answer(("add_items", {...}))."""
+    from erranderpy.core.llm import LLMResult, Message, ToolCall
+
+    tool_calls = [ToolCall(f"call_{i}", name, args) for i, (name, args) in enumerate(calls)]
+    return LLMResult(Message(role="assistant", text=text, tool_calls=tool_calls), "scripted", "scripted-1", 100, 10, 5.0, 0.00001)
+
+
+def text_answer(text: str):
+    from erranderpy.core.llm import LLMResult, Message
+
+    return LLMResult(Message(role="assistant", text=text), "scripted", "scripted-1", 100, 10, 5.0, 0.00001)
+
+
+def route_answer(*pairs: tuple[str, str]):
+    return tool_answer(("route", {"routes": [{"agent": a, "text": t} for a, t in pairs]}))

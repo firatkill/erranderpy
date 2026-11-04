@@ -1,12 +1,12 @@
-"""Prototype router and agents used by the Stage 0 evals.
+"""Prototype agents for evals: agents that are designed but not built yet.
 
-These are the *first drafts* of the real router and agents. Stage 0 uses them
-to compare models on exactly the decisions the bot will make. In Stage 1 they
-move into `agents/<name>/agent.yaml` + `tools.py`.
+Real agents live in `agents/<name>/` and the evals load them from there. Until
+an agent exists, its prototype here lets us keep measuring the router and the
+tool decisions it will need. `tasks` moves to `agents/tasks/` in Stage 2.
 
 Important: the few-shot `examples` below must never be copied from the eval
-datasets in `evals/`. If they were, a model could score well by recognizing the
-sentence instead of understanding it (overfitting).
+datasets. If they were, a model could score well by recognizing the sentence
+instead of understanding it (overfitting).
 """
 
 from __future__ import annotations
@@ -22,50 +22,12 @@ class PrototypeAgent:
     description: str
     examples: list[str]
     system_prompt: str
-    tools: list[ToolSpec]
+    tool_specs: list[ToolSpec]
 
 
 def _obj(properties: dict, required: list[str] | None = None) -> dict:
     return {"type": "object", "properties": properties, "required": required or []}
 
-
-_NAMES = {"type": "array", "items": {"type": "string"}, "minItems": 1}
-
-SHOPPING = PrototypeAgent(
-    name="shopping",
-    description="Manages the shopping list: adds, removes and checks off items, shows the list.",
-    examples=["süt almam lazım", "listede ne var", "ekmeği aldım", "yumurtayı listeden sil"],
-    system_prompt=(
-        "You manage the user's shopping list. Users write in Turkish.\n"
-        "For every message, call exactly one tool.\n"
-        "Write item names in lowercase dictionary form, without Turkish case or plural suffixes: "
-        "'peyniri' -> 'peynir', 'portakalları' -> 'portakal'.\n"
-        "Set quantity only when the user gives a number of units; otherwise leave it out.\n"
-        "If the user says something ran out or is finished, add it to the list."
-    ),
-    tools=[
-        ToolSpec(
-            "add_items",
-            "Add one or more items to the shopping list.",
-            _obj(
-                {
-                    "items": {
-                        "type": "array",
-                        "minItems": 1,
-                        "items": _obj(
-                            {"name": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}},
-                            ["name"],
-                        ),
-                    }
-                },
-                ["items"],
-            ),
-        ),
-        ToolSpec("remove_items", "Remove items from the list without buying them.", _obj({"names": _NAMES}, ["names"])),
-        ToolSpec("mark_bought", "Mark items on the list as bought.", _obj({"names": _NAMES}, ["names"])),
-        ToolSpec("list_items", "Show the items still to buy.", _obj({})),
-    ],
-)
 
 TASKS = PrototypeAgent(
     name="tasks",
@@ -75,15 +37,15 @@ TASKS = PrototypeAgent(
     ),
     examples=["bundan sonra her gün 20 dk meditasyon", "bugün 15 dk meditasyon yaptım", "cuma günü dişçiyi ara", "yarın neler var"],
     system_prompt=(
-        "You manage the user's daily tasks and habits. Users write in Turkish.\n"
-        "For every message, call exactly one tool.\n"
+        "You manage the user's daily tasks and habits.\n"
+        "For every request, call exactly one tool.\n"
         "- A habit repeats every day with a target in minutes ('from now on, one hour of X a day') -> create_habit.\n"
         "- Progress is time already spent today on a habit ('I did X for 30 minutes today') -> log_progress.\n"
         "- A task is a one-off to-do -> add_task. Use when='today' or 'tomorrow'; for other days use YYYY-MM-DD.\n"
         "Always convert hours to minutes. Name habits with a short lowercase Turkish noun phrase "
         "('ingilizce', 'meditasyon', 'kitap okuma')."
     ),
-    tools=[
+    tool_specs=[
         ToolSpec(
             "create_habit",
             "Start a new daily habit with a target in minutes per day.",
@@ -99,11 +61,7 @@ TASKS = PrototypeAgent(
             "Add a one-off task.",
             _obj({"title": {"type": "string"}, "when": {"type": "string"}}, ["title", "when"]),
         ),
-        ToolSpec(
-            "complete_task",
-            "Mark a one-off task as done.",
-            _obj({"title": {"type": "string"}}, ["title"]),
-        ),
+        ToolSpec("complete_task", "Mark a one-off task as done.", _obj({"title": {"type": "string"}}, ["title"])),
         ToolSpec(
             "list_tasks",
             "Show tasks and habit progress for a day.",
@@ -112,45 +70,4 @@ TASKS = PrototypeAgent(
     ],
 )
 
-AGENTS: dict[str, PrototypeAgent] = {a.name: a for a in (SHOPPING, TASKS)}
-
-ROUTER_AGENTS = [*AGENTS, "unknown"]
-
-ROUTE_TOOL = ToolSpec(
-    "route",
-    "Send each request in the user's message to one agent.",
-    _obj(
-        {
-            "routes": {
-                "type": "array",
-                "minItems": 1,
-                "items": _obj(
-                    {
-                        "agent": {"type": "string", "enum": ROUTER_AGENTS},
-                        "text": {"type": "string", "description": "This request, in the user's own words."},
-                    },
-                    ["agent", "text"],
-                ),
-            }
-        },
-        ["routes"],
-    ),
-)
-
-
-def router_system_prompt() -> str:
-    lines = [
-        "You are the router of a personal assistant. Users write short messages, usually in Turkish.",
-        "A message may contain several requests. Split it and send each request to exactly one agent.",
-        "",
-        "Agents:",
-    ]
-    for agent in AGENTS.values():
-        examples = "; ".join(f'"{e}"' for e in agent.examples)
-        lines.append(f"- {agent.name}: {agent.description} Examples: {examples}")
-    lines += [
-        "- unknown: anything else: greetings, chit-chat, questions the agents can't handle, unclear messages.",
-        "",
-        "Always answer by calling the `route` tool exactly once. Never reply with plain text.",
-    ]
-    return "\n".join(lines)
+PROTOTYPES: dict[str, PrototypeAgent] = {TASKS.name: TASKS}
