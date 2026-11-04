@@ -36,11 +36,23 @@ make eval       # Turkish eval set with the provider the bot would use
 make compare    # same eval set on every provider with a key → reports/eval-*.md
 ```
 
+## Eval results
+
+46 Turkish cases (30 routing, 16 tool calls), each run 3 times
+([report](reports/2026-11-04-openai-baseline.md)):
+
+| Model | Routing | Tool calls | Errors | p50 latency | Cost / call |
+|---|---|---|---|---|---|
+| OpenAI gpt-6-luna | 100% | 100% | 0% | 1.65 s | $0.000053 |
+
+Other providers will be added as they are measured. A perfect score also means the eval set is
+too easy to tell models apart, so harder cases are next.
+
 ## Roadmap
 
 | Stage | What | Status |
 |---|---|---|
-| 0 | Provider-agnostic LLM layer + Turkish eval set + model comparison | 🚧 |
+| 0 | Provider-agnostic LLM layer + Turkish eval set + model comparison | ✅ |
 | 1 | Core (router, agent runtime, tracing), shopping agent, `start.sh` setup | ⏳ |
 | 2 | Tasks & habits agent, nightly scheduler, evening summary | ⏳ |
 | 3 | On-call agent and chaos tests | ⏳ |
