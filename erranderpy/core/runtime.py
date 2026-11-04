@@ -16,7 +16,7 @@ from datetime import datetime
 import pydantic
 
 from erranderpy.core.llm import LLMProvider, Message
-from erranderpy.core.registry import Agent
+from erranderpy.core.agent import Agent
 from erranderpy.core.tools import ToolContext, ToolError, ToolResult
 
 MAX_STEPS = 5
@@ -25,7 +25,7 @@ COMMON_INSTRUCTIONS = """\
 Rules for every agent:
 - Reply in the same language as the user.
 - Act only through your tools. Never say you did something without calling a tool.
-- If the request is unclear, ask one short question instead of guessing.
+- If the request is unclear, ask one short question instead of guessing, and call no tool in that reply.
 - Earlier messages are only context; act on the latest user message."""
 
 
@@ -33,7 +33,7 @@ class TooManySteps(Exception):
     pass
 
 
-def build_agent_prompt(agent, now: datetime | None = None) -> str:
+def build_agent_prompt(agent, now: datetime | None = None, others: list | None = None) -> str:
     """The agent's own prompt + rules for every agent + today's date.
 
     The date goes last: it changes daily, and providers cache the *start* of a
@@ -41,6 +41,9 @@ def build_agent_prompt(agent, now: datetime | None = None) -> str:
     words like "tomorrow" or "thursday"; the actual date math is done in code.
     """
     prompt = f"{agent.system_prompt}\n\n{COMMON_INSTRUCTIONS}"
+    if "agents" in getattr(agent, "context", []) and others is not None:
+        listing = "\n".join(f"- {a.name} ({a.title or a.name}): {a.description}" for a in others if a.name != agent.name)
+        prompt += f"\n\nAgents that already exist:\n{listing or '- none'}"
     if now is not None:
         prompt += f"\n\nToday is {now:%A}, {now:%Y-%m-%d}."
     return prompt
@@ -49,7 +52,7 @@ def build_agent_prompt(agent, now: datetime | None = None) -> str:
 def run_agent(llm: LLMProvider, agent: Agent, text: str, ctx: ToolContext, history: list[Message]) -> str:
     assert ctx.tracer is not None
     messages = [*history, Message.user(text)]
-    system = build_agent_prompt(agent, ctx.now)
+    system = build_agent_prompt(agent, ctx.now, list(ctx.extras.get("agents", {}).values()))
 
     for step in range(MAX_STEPS):
         with ctx.tracer.span("agent.llm", agent=agent.name, input=text if step == 0 else f"step {step + 1}") as span:

@@ -11,7 +11,7 @@ from erranderpy.assistant import Assistant
 from erranderpy.config import load_settings
 from erranderpy.core.db import Database
 from erranderpy.core.llm import ConfigError, select_provider
-from erranderpy.core.registry import AgentLoadError, load_agents
+from erranderpy.core.registry import AGENTS_DIR, AgentLoadError, load_agents
 from erranderpy.gateway.telegram import build_application
 from erranderpy.pairing import Pairing
 
@@ -28,13 +28,14 @@ def main() -> int:
         settings = load_settings()
         llm, reason = select_provider()
         db = Database(settings.db_path)
-        agents = load_agents(db=db)
+        agent_dirs = [AGENTS_DIR, settings.user_agents_dir]
+        agents = load_agents(agent_dirs, db)
     except (ConfigError, AgentLoadError) as exc:
         print(f"✗ {exc}\n  Fix .env (or run `make doctor`) and start again.", file=sys.stderr)
         return 1
 
     print(f"✓ {reason}")
-    print(f"✓ Agents: {', '.join(agents) or 'none'}")
+    print(f"✓ Agents: {', '.join(agents) or 'none'}  (yours: {settings.user_agents_dir})")
     for agent in agents.values():
         for job in agent.jobs:
             at = job.time_of_day()
@@ -50,7 +51,7 @@ def main() -> int:
     else:
         print("✓ Paired with your Telegram account")
 
-    assistant = Assistant(llm, agents, db, settings.timezone, settings.language)
+    assistant = Assistant(llm, agents, db, settings.timezone, settings.language, agent_dirs)
     app = build_application(settings.telegram_token, assistant, pairing, settings.language, settings.timezone)
     print("✅ Ready. Write to your bot on Telegram. (Ctrl+C to stop)")
     app.run_polling(allowed_updates=["message"])

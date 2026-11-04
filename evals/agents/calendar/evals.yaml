@@ -1,0 +1,33 @@
+# Tool cases for the example calendar agent (a declarative "records" agent).
+cases:
+  - id: cal01
+    message: "11 kasımda saat 14:00'te AVM'ye gitmem gerek"
+    expect: {tool: add_entry, args: {title: "~avm", when: "~-11-11 14:00"}}
+  - id: cal02
+    message: "yarın 9:30'da dişçi randevum var, Kadıköy'de"
+    expect: {tool: add_entry, args: {title: "~dişçi", when: "~09:30", place: "~kadıköy"}}
+  # "2" could be 02:00 or 14:00: ask (in text, no tool) or flag it so the tool asks; never save a guess
+  - id: cal03
+    message: "11 kasımda saat 2'de avm'ye gitmem gerek"
+    expect:
+      any:
+        - {no_tool: true}
+        - {tool: add_entry, args: {time_ambiguous: true}}
+  - id: cal07
+    message: "öğleden sonra"
+    history:
+      - [user, "11 kasımda saat 2'de avm'ye gitmem gerek"]
+      - [assistant, "🕑 Saat 2 derken öğleden sonra 14:00 mi, yoksa 02:00 mi?"]
+    expect: {tool: add_entry, args: {title: "~avm", when: "~-11-11 14:00"}}
+  - id: cal04
+    message: "akşam 8'de sinemaya gidiyorum bugün"
+    expect: {tool: add_entry, args: {title: "~sinema", when: "~20:00"}}
+  - id: cal05
+    message: "takvimimde neler var?"
+    expect: {tool: list_entries, args: {}}
+  - id: cal06
+    message: "avm'yi iptal et"
+    history:
+      - [user, "11 kasım 14:00 avm"]
+      - [assistant, "📅 Kaydettim: AVM · 11.11 Çarşamba 14:00."]
+    expect: {tool: delete_entry, args: {entry: "~avm"}}

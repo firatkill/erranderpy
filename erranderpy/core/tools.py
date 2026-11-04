@@ -38,6 +38,12 @@ class ToolContext:
     now: datetime  # timezone-aware, in the user's TIMEZONE
     messages: dict[str, str] = field(default_factory=dict)  # this agent's reply templates, one language
     tracer: Tracer | None = None
+    request_text: str = ""  # the request routed to this agent
+    # Tools ask the pipeline for things beyond a reply by setting effects,
+    # e.g. {"reload_agents": True, "replay": "11 kasım 14:00 avm"} (see Assistant).
+    effects: dict[str, Any] = field(default_factory=dict)
+    # Platform information a few tools need (the agent builder): agents, folders.
+    extras: dict[str, Any] = field(default_factory=dict)
 
     def t(self, key: str, **values: Any) -> str:
         """Fill in one of the agent's reply templates (agents/<name>/messages.yaml)."""

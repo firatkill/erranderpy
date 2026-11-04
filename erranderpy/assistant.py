@@ -12,13 +12,15 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import datetime, time
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from erranderpy.core import messages
+from erranderpy.core import messages, reminders
+from erranderpy.core.agent import Agent
 from erranderpy.core.db import Database
 from erranderpy.core.jobs import Job
 from erranderpy.core.llm import LLMError, LLMProvider, Message
-from erranderpy.core.registry import Agent
+from erranderpy.core.registry import AGENTS_DIR, load_agents
 from erranderpy.core.router import UNKNOWN, Route, route
 from erranderpy.core.runtime import TooManySteps, run_agent
 from erranderpy.core.tools import ToolContext
@@ -30,23 +32,49 @@ log = logging.getLogger(__name__)
 HISTORY_MESSAGES = 6
 
 FALLBACK_PROMPT = """\
-You are the assistant of a personal Telegram bot. You can only help with:
+You are the assistant of a personal Telegram bot. This is everything you can do:
 {abilities}
 The user's message does not match these. Reply in one or two short sentences, in the user's language:
-answer greetings and thanks naturally; for anything else, say you can't do that yet and mention what you can do.
-Never claim to have done something."""
+answer greetings and thanks naturally; for questions about what you can do, answer from the list above
+(including anything you do automatically at set times); otherwise say you can't do that yet.
+Never claim to have done something, and never claim you can't do something that is in the list."""
 
 
 class Assistant:
-    def __init__(self, llm: LLMProvider, agents: dict[str, Agent], db: Database, timezone: ZoneInfo, language: str):
+    def __init__(
+        self,
+        llm: LLMProvider,
+        agents: dict[str, Agent],
+        db: Database,
+        timezone: ZoneInfo,
+        language: str,
+        agent_dirs: list[Path] | None = None,
+    ):
         self.llm = llm
         self.agents = agents
         self.db = db
         self.timezone = timezone
         self.language = language
+        self.agent_dirs = agent_dirs or [AGENTS_DIR]
         # One message at a time: the bot has a single owner, and this keeps
         # tool writes and history in order.
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+
+    @property
+    def user_agents_dir(self) -> Path | None:
+        """Where the bot writes agents it creates: the last of several agent folders.
+
+        With a single folder (the built-in agents/) the bot must not write
+        anywhere, so creating abilities is off.
+        """
+        return self.agent_dirs[-1] if len(self.agent_dirs) > 1 else None
+
+    def reload_agents(self) -> None:
+        """Pick up agents added or removed while running (the builder does this)."""
+        self.agents = load_agents(self.agent_dirs, self.db)
+        log.info("agents reloaded: %s", ", ".join(self.agents))
+
+    # --- messages --------------------------------------------------------------
 
     def handle(self, user_id: int, chat_id: int, text: str) -> str:
         with self._lock:
@@ -71,12 +99,78 @@ class Assistant:
             self.db.save_message(chat_id, "assistant", reply, tracer.trace_id)
             return reply
 
-    # --- steps ---------------------------------------------------------------
+    def _handle_route(
+        self, r: Route, user_id: int, chat_id: int, history: list[Message], tracer: Tracer, replayed: bool = False
+    ) -> str:
+        agent = self.agents.get(r.agent)
+        if agent is None or r.agent == UNKNOWN:
+            return self._fallback(r.text, history, tracer)
+        ctx = self._context(agent, user_id, chat_id, tracer, r.text)
+        reply = run_agent(self.llm, agent, r.text, ctx, history)
+
+        # Effects a tool asked for (the builder after creating an agent):
+        if ctx.effects.get("reload_agents"):
+            self.reload_agents()
+        replay = ctx.effects.get("replay")
+        if replay and not replayed:
+            # Handle the request that started it all ("11 kasım 14:00 AVM") with the
+            # agent that now exists. Only once: a replay never triggers another replay.
+            routes = route(self.llm, list(self.agents.values()), replay, [], tracer)
+            extra = [self._handle_route(x, user_id, chat_id, [], tracer, replayed=True) for x in routes]
+            reply = "\n\n".join([reply, *(e for e in extra if e)])
+        return reply
+
+    def _fallback(self, text: str, history: list[Message], tracer: Tracer) -> str:
+        with tracer.span("fallback.llm", agent=UNKNOWN, input=text) as span:
+            prompt = FALLBACK_PROMPT.format(abilities=self.capabilities())
+            result = self.llm.complete(prompt, [*history, Message.user(text)], max_tokens=512)
+            span.record_llm(result)
+            span.output = result.text
+        return result.text.strip()
+
+    def capabilities(self) -> str:
+        """What the bot can do, built from the agents themselves, so it is never out of date.
+
+        Includes scheduled jobs and reminders: without them the model once told
+        the user it "can't send reminders" while an evening summary was running.
+        """
+        lines = []
+        for a in self.agents.values():
+            line = f"- {a.title or a.name}: {a.description}"
+            for job in a.jobs:
+                at = job.time_of_day()
+                doc = (job.fn.__doc__ or job.name).strip().splitlines()[0]
+                if at is not None:
+                    line += f" Automatically every day at {at:%H:%M}: {doc}"
+            if a.reminder_hint:
+                line += f" It sends reminders ({a.reminder_hint})."
+            lines.append(line)
+        return "\n".join(lines) or "- nothing yet"
+
+    def _context(self, agent: Agent, user_id: int, chat_id: int, tracer: Tracer, request_text: str = "") -> ToolContext:
+        return ToolContext(
+            db=self.db,
+            user_id=user_id,
+            chat_id=chat_id,
+            now=datetime.now(self.timezone),
+            messages=agent.messages_for(self.language),
+            tracer=tracer,
+            request_text=request_text,
+            extras={"agents": self.agents, "user_agents_dir": self.user_agents_dir},
+        )
+
+    def _history(self, chat_id: int) -> list[Message]:
+        rows = self.db.recent_messages(chat_id, HISTORY_MESSAGES)
+        return [Message(role=row["role"], text=row["text"]) for row in rows]
+
+    # --- scheduled work -----------------------------------------------------------
 
     def run_job(self, job: Job, user_id: int, chat_id: int) -> str | None:
         """Run one scheduled job for the owner. Returns text to send, or None."""
-        agent = self.agents[job.agent]
         with self._lock:
+            agent = self.agents.get(job.agent)
+            if agent is None:
+                return None
             tracer = Tracer(self.db)
             ctx = self._context(agent, user_id, chat_id, tracer)
             try:
@@ -91,39 +185,33 @@ class Assistant:
                 self.db.save_message(chat_id, "assistant", text, tracer.trace_id)
             return text or None
 
-    def _context(self, agent: Agent, user_id: int, chat_id: int, tracer: Tracer) -> ToolContext:
-        return ToolContext(
-            db=self.db,
-            user_id=user_id,
-            chat_id=chat_id,
-            now=datetime.now(self.timezone),
-            messages=agent.messages_for(self.language),
-            tracer=tracer,
-        )
-
-    def _handle_route(self, r: Route, user_id: int, chat_id: int, history: list[Message], tracer: Tracer) -> str:
-        agent = self.agents.get(r.agent)
-        if agent is None or r.agent == UNKNOWN:
-            return self._fallback(r.text, history, tracer)
-        return run_agent(self.llm, agent, r.text, self._context(agent, user_id, chat_id, tracer), history)
-
-    def _fallback(self, text: str, history: list[Message], tracer: Tracer) -> str:
-        abilities = "\n".join(f"- {a.description}" for a in self.agents.values()) or "- nothing yet"
-        with tracer.span("fallback.llm", agent=UNKNOWN, input=text) as span:
-            result = self.llm.complete(FALLBACK_PROMPT.format(abilities=abilities), [*history, Message.user(text)], max_tokens=512)
-            span.record_llm(result)
-            span.output = result.text
-        return result.text.strip()
-
-    def _history(self, chat_id: int) -> list[Message]:
-        rows = self.db.recent_messages(chat_id, HISTORY_MESSAGES)
-        return [Message(role=row["role"], text=row["text"]) for row in rows]
+    def due_reminders(self, chat_id: int) -> list[str]:
+        """Claim reminders that are due now; returns the texts to send."""
+        with self._lock:
+            texts = []
+            for due in reminders.take_due(self.db):
+                text = (self._t("late_prefix") + " " if due.late else "") + due.text
+                tracer = Tracer(self.db)
+                with tracer.span("reminder.send", agent=due.agent, input=due.id) as span:
+                    span.output = text
+                self.db.save_message(chat_id, "assistant", text, tracer.trace_id)
+                texts.append(text)
+            return texts
 
     # --- commands --------------------------------------------------------------
 
     def help_text(self) -> str:
-        agents = "\n".join(f"• {a.name}: {a.examples[0] if a.examples else a.description}" for a in self.agents.values())
+        agents = "\n".join(
+            f"• {a.title or a.name}: {a.examples[0] if a.examples else a.description}" for a in self.agents.values()
+        )
         return self._t("help", agents=agents)
+
+    def agents_text(self) -> str:
+        lines = [self._t("agents_header")]
+        for a in self.agents.values():
+            origin = self._t("agent_by_bot") if a.created_by == "builder" else self._t("agent_builtin")
+            lines.append(f"• {a.title or a.name} ({a.name}) · {origin}")
+        return "\n".join(lines)
 
     def status_text(self) -> str:
         midnight = datetime.combine(datetime.now(self.timezone).date(), time.min, tzinfo=self.timezone)

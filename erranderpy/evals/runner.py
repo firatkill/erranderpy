@@ -45,10 +45,26 @@ class CaseResult:
     tokens_out: int = 0
 
 
+FIXTURE_AGENTS_DIR = EVALS_DIR / "agents"
+
+
+@cache
+def routing_agents() -> dict[str, Any]:
+    """What the router sees: the built-in agents (plus prototypes of planned ones)."""
+    return {**PROTOTYPES, **load_agents(AGENTS_DIR)}
+
+
 @cache
 def eval_agents() -> dict[str, Any]:
-    """Real agents first; prototypes only for agents that don't exist yet."""
-    return {**PROTOTYPES, **load_agents(AGENTS_DIR)}
+    """Agents tool cases can target: built-in ones, plus example agents the bot
+    could create for itself (evals/agents/, e.g. a calendar), so declarative
+    agents are measured too."""
+    return {**routing_agents(), **load_agents(FIXTURE_AGENTS_DIR)}
+
+
+def _history(case: dict[str, Any]) -> list[Message]:
+    """Optional earlier turns: history: [[user, "..."], [assistant, "..."]]."""
+    return [Message(role=role, text=text) for role, text in case.get("history") or []]
 
 
 def load_cases(suite: str) -> list[dict[str, Any]]:
@@ -56,7 +72,7 @@ def load_cases(suite: str) -> list[dict[str, Any]]:
     cases = list(data["cases"])
     if suite == "tools":
         # Each agent keeps its own tool cases next to its code.
-        for path in sorted(AGENTS_DIR.glob("*/evals.yaml")):
+        for path in sorted([*AGENTS_DIR.glob("*/evals.yaml"), *FIXTURE_AGENTS_DIR.glob("*/evals.yaml")]):
             if path.parent.name.startswith(("_", ".")):
                 continue
             agent_cases = yaml.safe_load(path.read_text(encoding="utf-8")).get("cases") or []
@@ -73,10 +89,11 @@ def _record_usage(result: CaseResult, llm: LLMResult) -> None:
 
 def run_router_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
     result = CaseResult("router", case["id"], case["message"], case["expect"])
-    agents = list(eval_agents().values())
+    agents = list(routing_agents().values())
     names = [a.name for a in agents]
+    messages = [*_history(case), Message.user(case["message"])]
     try:
-        llm = provider.complete(build_router_prompt(agents), [Message.user(case["message"])], tools=[route_tool(names)])
+        llm = provider.complete(build_router_prompt(agents), messages, tools=[route_tool(names)])
     except LLMError as exc:
         result.error = exc.kind
         return result
@@ -95,32 +112,44 @@ def run_router_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
 def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
     result = CaseResult("tools", case["id"], case["message"], case["expect"])
     agent = eval_agents()[case["agent"]]
-    system = build_agent_prompt(agent, datetime.now())  # exactly the prompt the bot uses
+    # Exactly the prompt the bot uses; the builder also sees the agents that exist.
+    system = build_agent_prompt(agent, datetime.now(), list(routing_agents().values()))
+    messages = [*_history(case), Message.user(case["message"])]
     try:
-        llm = provider.complete(system, [Message.user(case["message"])], tools=agent.tool_specs)
+        llm = provider.complete(system, messages, tools=agent.tool_specs)
     except LLMError as exc:
         result.error = exc.kind
         return result
     _record_usage(result, llm)
 
-    if not llm.tool_calls:
-        result.error = "no_tool_call"
-        result.actual = llm.text[:200]
-        return result
-    expect = case["expect"]
-    if "calls" in expect:
-        # Several requests in one message: compare every call of the turn.
-        actual = [{"tool": c.name, "args": c.arguments} for c in llm.tool_calls]
-        result.actual = actual
-        result.passed = match(expect["calls"], actual)
-        return result
-    call = llm.tool_calls[0]
-    result.actual = {"tool": call.name, "args": call.arguments}
-    if call.name != expect["tool"]:
-        result.error = "wrong_tool"
-        return result
-    result.passed = match(expect.get("args", {}), call.arguments)
+    result.passed, result.actual, result.error = check_tool_expectation(case["expect"], llm)
     return result
+
+
+def check_tool_expectation(expect: dict[str, Any], llm: LLMResult) -> tuple[bool, Any, str | None]:
+    """Return (passed, what the model did, error). Expectation forms:
+    {tool, args}            the first tool call
+    {calls: [...]}          every tool call of the turn (order doesn't matter)
+    {no_tool: true}         a question back, no action
+    {any: [expect, ...]}    any one of several acceptable answers
+    """
+    if "any" in expect:
+        outcomes = [check_tool_expectation(e, llm) for e in expect["any"]]
+        passed = next((o for o in outcomes if o[0]), None)
+        return passed or (False, outcomes[0][1], outcomes[0][2])
+    if expect.get("no_tool"):
+        actual = {"text": llm.text[:200], "tools": [c.name for c in llm.tool_calls]}
+        return (not llm.tool_calls and bool(llm.text.strip())), actual, None
+    if not llm.tool_calls:
+        return False, llm.text[:200], "no_tool_call"
+    if "calls" in expect:
+        actual = [{"tool": c.name, "args": c.arguments} for c in llm.tool_calls]
+        return match(expect["calls"], actual), actual, None
+    call = llm.tool_calls[0]
+    actual = {"tool": call.name, "args": call.arguments}
+    if call.name != expect["tool"]:
+        return False, actual, "wrong_tool"
+    return match(expect.get("args", {}), call.arguments), actual, None
 
 
 RUNNERS = {"router": run_router_case, "tools": run_tool_case}
@@ -132,6 +161,6 @@ def run_suite(provider: LLMProvider, suite: str, runs: int = 1) -> list[CaseResu
     # Load agents once, *before* starting threads. Importing the same agent
     # modules from four threads at once lets one import overwrite another's
     # half-finished module (a race condition we actually hit).
-    eval_agents()
+    eval_agents()  # also loads routing_agents()
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         return list(pool.map(lambda case: runner(provider, case), cases))

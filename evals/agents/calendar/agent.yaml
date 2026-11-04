@@ -1,0 +1,20 @@
+# An example of an agent the builder creates (kind: records). It lives here, not in
+# agents/, so the bot doesn't have it: evals use it to measure declarative agents.
+name: calendar
+kind: records
+title: "📅 Takvim"
+item: etkinlik
+description: >-
+  Keeps appointments and events at a date and clock time (meetings, doctor, going somewhere),
+  shows upcoming ones and reminds the user before them.
+examples:
+  - "cuma 10:30'da toplantı var"
+  - "takvimde neler var"
+  - "dişçi randevusunu 16:00'ya al"
+fields:
+  - {name: title, type: text, label: başlık, required: true, description: what the event is}
+  - {name: when, type: datetime, label: zaman, required: true}
+  - {name: place, type: text, label: yer}
+reminders:
+  - {field: when, before_minutes: 60}
+created_by: builder

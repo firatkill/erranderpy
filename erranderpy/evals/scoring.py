@@ -17,6 +17,12 @@ __all__ = ["match", "normalize", "percentile", "same_agents", "tr_lower"]
 
 def match(expected: Any, actual: Any) -> bool:
     """Recursively check `actual` against `expected` (see evals/tools_tr.yaml for the rules)."""
+    if isinstance(expected, dict) and set(expected) == {"$has"}:
+        # {"$has": [...]}: the actual list contains (at least) these items, in any order.
+        if not isinstance(actual, list):
+            return False
+        return all(any(match(item, act) for act in actual) for item in expected["$has"])
+
     if isinstance(expected, dict):
         if not isinstance(actual, dict):
             return False

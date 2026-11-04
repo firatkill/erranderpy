@@ -1,0 +1,36 @@
+# Tool cases for the builder. Matching rules: evals/tools_tr.yaml.
+# {"$has": [...]} = the list contains at least these items.
+cases:
+  - id: build01
+    message: "11 kasımda saat 2'de avm'ye gitmem gerek"
+    expect:
+      tool: propose_agent
+      args:
+        draft: {fields: {$has: [{type: datetime}]}}
+        handle_after_creation: true
+  - id: build02
+    message: "okuduğum kitapları da takip edebilir misin? yazarı ve kaç puan verdiğimle birlikte"
+    expect:
+      tool: propose_agent
+      args:
+        draft: {fields: {$has: [{type: text, required: true}, {type: number}]}}
+  - id: build03
+    message: "evet, ekle"
+    history:
+      - [user, "doğum günlerini tutmanı istiyorum"]
+      - [assistant, "🧩 Yeni yetenek önerisi: 🎂 Doğum günleri\nHer kişi için: isim (metin, zorunlu) · tarih (tarih, zorunlu)\n⏰ tarih zamanından 1440 dk önce hatırlatma\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
+    expect: {tool: create_agent, args: {}}
+  - id: build04
+    message: "hatırlatma 2 gün önce olsun"
+    history:
+      - [user, "doğum günlerini tutmanı istiyorum"]
+      - [assistant, "🧩 Yeni yetenek önerisi: 🎂 Doğum günleri\nHer kişi için: isim (metin, zorunlu) · tarih (tarih, zorunlu)\n⏰ tarih zamanından 1440 dk önce hatırlatma\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
+    expect:
+      tool: propose_agent
+      args: {draft: {reminders: [{before_minutes: 2880}]}}
+  - id: build05
+    message: "vazgeçtim, ekleme"
+    history:
+      - [user, "harcamalarımı tutmanı istiyorum"]
+      - [assistant, "🧩 Yeni yetenek önerisi: 💸 Harcamalar\n…\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
+    expect: {tool: cancel_proposal, args: {}}

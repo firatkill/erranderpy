@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 
 TELEGRAM_MAX_CHARS = 4096
 TYPING_REFRESH_S = 4  # Telegram shows "typing…" for ~5 s per call
+REMINDER_CHECK_S = 30  # how often due reminders are looked up
 
 
 def build_application(
@@ -71,6 +72,17 @@ def build_application(
             text = await asyncio.to_thread(assistant.last_trace_text, update.effective_chat.id)
             await send(update.effective_message, text)
 
+    async def on_agents(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if await guard(update):
+            await send(update.effective_message, assistant.agents_text())
+
+    async def send_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
+        chat_id = assistant.db.get_setting(OWNER_CHAT_KEY)
+        if chat_id is None:
+            return
+        for text in await asyncio.to_thread(assistant.due_reminders, int(chat_id)):
+            await context.bot.send_message(int(chat_id), text[:TELEGRAM_MAX_CHARS])
+
     async def run_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         job: Job = context.job.data
         owner = pairing.owner_id
@@ -81,6 +93,8 @@ def build_application(
         if text:
             await context.bot.send_message(int(chat_id), text[:TELEGRAM_MAX_CHARS])
 
+    # Daily jobs of agents loaded at start. (Agents the bot creates while running
+    # are records agents: they use reminders, not daily jobs.)
     for agent in assistant.agents.values():
         for job in agent.jobs:
             at = job.time_of_day()
@@ -89,7 +103,11 @@ def build_application(
                 continue
             app.job_queue.run_daily(run_job, time=at.replace(tzinfo=timezone), data=job, name=f"{agent.name}.{job.name}")
 
+    # One-off reminders live in the database; check for due ones every 30 s.
+    app.job_queue.run_repeating(send_reminders, interval=REMINDER_CHECK_S, first=5, name="core.reminders")
+
     app.add_handler(CommandHandler(["start", "help"], on_help))
+    app.add_handler(CommandHandler("agents", on_agents))
     app.add_handler(CommandHandler("status", on_status))
     app.add_handler(CommandHandler("trace", on_trace))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))

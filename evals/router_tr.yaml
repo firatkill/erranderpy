@@ -40,3 +40,15 @@ cases:
   - {id: r30, message: "teşekkürler, harikasın", expect: [unknown]}
   # --- from real use (each message the bot got wrong becomes a case) -------
   - {id: r31, message: "Her gün 30dk ingilizce okuma yapmam lazım. Ayrıca diksiyon alıştırmaları yapmalıyım", expect: [tasks]}
+  # --- builder: no agent can do it -> offer a new ability (Stage 3) ---------
+  - {id: r32, message: "11 kasımda saat 2'de avm'ye gitmem gerek", expect: [builder]}
+  - {id: r33, message: "okuduğum kitapları da takip edebilir misin", expect: [builder]}
+  - {id: r34, message: "yarın 15:30'da dişçi randevum var", expect: [builder]}
+  - id: r35
+    message: "evet"
+    history:
+      - [user, "harcamalarımı tutmanı istiyorum"]
+      - [assistant, "🧩 Yeni yetenek önerisi: 💸 Harcamalar\nHer harcama için: açıklama (metin, zorunlu) · tutar (sayı, zorunlu) · tarih (tarih)\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
+    expect: [builder]
+  # still the old agents: a whole-day to-do is a task, not a new ability
+  - {id: r36, message: "cumartesi arabayı yıkatmam lazım", expect: [tasks]}

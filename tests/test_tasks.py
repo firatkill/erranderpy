@@ -52,6 +52,8 @@ def test_habit_without_target_asks_for_minutes_and_can_be_updated(tasks):
     assert tasks("create_habit", name="diksiyon", daily_minutes=15) == "✏️ diksiyon: artık günde 15 dk."
     assert "diksiyon · 0/15 dk" in tasks("list_tasks")
     assert tasks("create_habit", name="diksiyon", daily_minutes=15) == "Bu alışkanlık zaten var: diksiyon."
+    tasks("create_habit", name="meditasyon")
+    assert tasks("create_habit", name="meditasyon").startswith("👍 Tamam, meditasyon süresiz kalıyor.")
 
 
 def test_progress_accumulates_and_finishes(tasks):

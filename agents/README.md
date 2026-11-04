@@ -3,6 +3,12 @@
 Each folder here is one agent. The core finds them on start; adding an agent never requires
 editing core code.
 
+There are two kinds:
+- **code agents** (this folder): you write `tools.py`. Full power.
+- **records agents**: a YAML description only (`kind: records`); the platform generates the tools.
+  This is what the bot writes when you ask it for a new ability (the `builder` agent). Those land in
+  `data/agents/` (private, git-ignored), never here. See `evals/agents/calendar/agent.yaml` for an example.
+
 ```
 agents/<name>/
   agent.yaml     name (= folder name), description, examples, system_prompt   required

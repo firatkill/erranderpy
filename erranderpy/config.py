@@ -21,6 +21,11 @@ class Settings:
     language: str
     db_path: Path
 
+    @property
+    def user_agents_dir(self) -> Path:
+        """Agents the bot creates for this user: private, next to the database, git-ignored."""
+        return self.db_path.parent / "agents"
+
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env

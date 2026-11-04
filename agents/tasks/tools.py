@@ -15,17 +15,10 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
+from erranderpy.core.dates import format_day, resolve_day
 from erranderpy.core.db import Database, utc_now_iso
 from erranderpy.core.text import find_unique, normalize
 from erranderpy.core.tools import ToolContext, tool
-
-WEEKDAY_NAMES = {
-    # English (what the prompt asks for) and Turkish (what the model sometimes sends anyway)
-    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6,
-    "pazartesi": 0, "salı": 1, "sali": 1, "çarşamba": 2, "carsamba": 2, "perşembe": 3, "persembe": 3,
-    "cuma": 4, "cumartesi": 5, "pazar": 6,
-}  # fmt: skip
-
 
 # --- tools ---------------------------------------------------------------------
 
@@ -64,7 +57,12 @@ def create_habit(
         ensure_habit_tasks(ctx.db, ctx.user_id, _today(ctx))
         return ctx.t("habit_updated", name=habit_name, minutes=daily_minutes)
     ensure_habit_tasks(ctx.db, ctx.user_id, _today(ctx))
-    return ctx.t("habit_restarted" if restarted else "habit_exists", name=habit_name)
+    if restarted:
+        return ctx.t("habit_restarted", name=habit_name)
+    if existing["daily_minutes"] is None and daily_minutes is None:
+        # e.g. after "how many minutes?" the user says "keep it without a target"
+        return ctx.t("habit_kept_open", name=habit_name)
+    return ctx.t("habit_exists", name=habit_name)
 
 
 @tool
@@ -207,22 +205,6 @@ def day_view(ctx: ToolContext, day: date, include_overdue: bool) -> str:
     return "\n".join(lines)
 
 
-def resolve_day(when: str, today: date) -> date | None:
-    """Turn the model's 'when' into a date. Done in code, never by the LLM (ADR-0003)."""
-    word = normalize(when)
-    if word in ("", "today", "bugün", "bugun"):
-        return today
-    if word in ("tomorrow", "yarın", "yarin"):
-        return today + timedelta(days=1)
-    if word in WEEKDAY_NAMES:
-        ahead = (WEEKDAY_NAMES[word] - today.weekday()) % 7 or 7  # next such day, never today
-        return today + timedelta(days=ahead)
-    try:
-        return date.fromisoformat(word)
-    except ValueError:
-        return None
-
-
 # --- helpers -------------------------------------------------------------------
 
 
@@ -256,6 +238,4 @@ def _day_label(ctx: ToolContext, day: date) -> str:
 
 
 def _date_label(ctx: ToolContext, day: date) -> str:
-    weekdays = ctx.t("weekdays").split(",")
-    name = weekdays[day.weekday()] if len(weekdays) == 7 else ""
-    return f"{day:%d.%m} {name}".strip()
+    return format_day(day, ctx.t("weekdays").split(","))

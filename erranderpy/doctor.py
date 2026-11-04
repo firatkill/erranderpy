@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from erranderpy.config import ROOT, load_settings
 from erranderpy.core.db import Database
 from erranderpy.core.llm import ConfigError, LLMError, LLMProvider, Message, select_provider
-from erranderpy.core.registry import AgentLoadError, load_agents
+from erranderpy.core.registry import AGENTS_DIR, AgentLoadError, load_agents
 from erranderpy.pairing import Pairing
 
 Check = tuple[bool, str]
@@ -68,8 +68,10 @@ def run() -> int:
         results.append((False, str(exc)))
 
     try:
-        agents = load_agents()
-        results.append((True, f"Agents: {', '.join(agents) or 'none'}"))
+        dirs = [AGENTS_DIR] + ([settings.user_agents_dir] if settings else [])
+        agents = load_agents(dirs)
+        mine = [a.name for a in agents.values() if a.created_by == "builder"]
+        results.append((True, f"Agents: {', '.join(agents) or 'none'}" + (f" (created by the bot: {', '.join(mine)})" if mine else "")))
     except AgentLoadError as exc:
         results.append((False, f"Agents: {exc}"))
 

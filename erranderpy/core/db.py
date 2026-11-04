@@ -49,6 +49,36 @@ CREATE TABLE IF NOT EXISTS traces (
 );
 CREATE INDEX IF NOT EXISTS traces_by_trace ON traces (trace_id);
 CREATE INDEX IF NOT EXISTS traces_by_time ON traces (created_at);
+
+-- Entries of declarative ("records") agents, e.g. a calendar the bot built for
+-- itself. One table for all of them: fields live in JSON, so creating an agent
+-- never needs a schema change (ADR-0012).
+CREATE TABLE IF NOT EXISTS records (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    agent      TEXT NOT NULL,
+    data       TEXT NOT NULL,          -- JSON: {"title": "AVM", "when": "2026-11-11T14:00"}
+    sort_at    TEXT,                   -- UTC of the first date/time field, for "upcoming" lists
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT
+);
+CREATE INDEX IF NOT EXISTS records_by_agent ON records (user_id, agent, deleted_at);
+
+-- One-off reminders ("send this at 13:00 on 11 Nov"). Stored, not only kept in
+-- memory, so they survive a restart (ADR-0014).
+CREATE TABLE IF NOT EXISTS reminders (
+    id         INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    agent      TEXT NOT NULL,
+    record_id  INTEGER,
+    due_at     TEXT NOT NULL,          -- UTC
+    text       TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending',   -- pending | sent | late | missed | cancelled
+    created_at TEXT NOT NULL,
+    sent_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS reminders_due ON reminders (status, due_at);
 """
 
 
