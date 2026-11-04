@@ -14,7 +14,8 @@
   wrong decisions, then reports back to you on Telegram.
 - **Two commands to run.** `git clone` and `./start.sh`. No Docker, no database server.
 
-> 🚧 **Status: Stage 1.** The bot works end to end with a shopping agent. Tasks and habits come next.
+> 🚧 **Status: Stage 2.** Shopping list, tasks and daily habits work end to end, with an evening summary.
+> The on-call agent comes next.
 > Follow progress in [SPEC.md](SPEC.md).
 
 ## Quick start
@@ -33,6 +34,9 @@ Then just write to it:
 ```
 you: 2 paket makarna, bir de süt
 bot: 🛒 Ekledim: 2 × makarna, süt. Listede 2 ürün var.
+you: her gün 30 dk ingilizce okuyacağım, bir de diksiyon çalışmalıyım
+bot: 🔁 Yeni alışkanlık: ingilizce okuma, günde 30 dk. Bugünden başlıyoruz.
+     🔁 Yeni alışkanlık: diksiyon. Günde kaç dakika ayırmak istersin? …
 you: /trace
 bot: 🔎 router.decide · 1.9s → shopping … tool.call add_items · 0.00s … 💰 $0.0001
 ```
@@ -72,7 +76,7 @@ too easy to tell models apart, so harder cases are next.
 |---|---|---|
 | 0 | Provider-agnostic LLM layer + Turkish eval set + model comparison | ✅ |
 | 1 | Core (router, agent runtime, tracing), shopping agent, `start.sh` setup | ✅ |
-| 2 | Tasks & habits agent, nightly scheduler, evening summary | ⏳ |
+| 2 | Tasks & habits agent, nightly scheduler, evening summary | ✅ |
 | 3 | On-call agent and chaos tests | ⏳ |
 | 4 | `make new-agent`, Docker, public release | ⏳ |
 

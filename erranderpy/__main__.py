@@ -35,6 +35,10 @@ def main() -> int:
 
     print(f"✓ {reason}")
     print(f"✓ Agents: {', '.join(agents) or 'none'}")
+    for agent in agents.values():
+        for job in agent.jobs:
+            at = job.time_of_day()
+            print(f"  ⏰ {agent.name}.{job.name}: " + (f"every day at {at:%H:%M}" if at else "off"))
     print(f"✓ Database: {settings.db_path}")
 
     pairing = Pairing(db)
@@ -47,7 +51,7 @@ def main() -> int:
         print("✓ Paired with your Telegram account")
 
     assistant = Assistant(llm, agents, db, settings.timezone, settings.language)
-    app = build_application(settings.telegram_token, assistant, pairing, settings.language)
+    app = build_application(settings.telegram_token, assistant, pairing, settings.language, settings.timezone)
     print("✅ Ready. Write to your bot on Telegram. (Ctrl+C to stop)")
     app.run_polling(allowed_updates=["message"])
     return 0

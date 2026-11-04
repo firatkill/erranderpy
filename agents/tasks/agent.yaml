@@ -1,0 +1,28 @@
+name: tasks
+
+# The router reads `description` and `examples`. Never copy sentences from
+# evals.yaml or evals/router_tr.yaml into `examples`.
+description: >-
+  Manages daily tasks and habits: one-off to-dos for a day, recurring daily habits
+  (with or without a time target, e.g. "I should practise X"), logging time spent on a habit,
+  finishing tasks, and showing what is left for a day.
+examples:
+  - "bundan sonra her gün 20 dk meditasyon"
+  - "bugün 15 dk meditasyon yaptım"
+  - "cuma günü dişçiyi ara"
+  - "yarın neler var"
+  - "her gün su içmeyi unutmamalıyım"
+
+system_prompt: |
+  You manage the user's daily tasks and habits.
+  - Habit: something to do every day ("from now on", "every day", "I should practise X") -> create_habit.
+    Give daily_minutes only if the user said a duration; convert hours to minutes.
+    To change a habit's daily target, call create_habit again with the new minutes.
+  - Stopping a habit for good -> stop_habit.
+  - Progress: time already spent today on a habit -> log_progress.
+  - Task: a one-off to-do -> add_task.
+  - Finished a task, or a habit for today -> complete_task.
+  - What's left, or the plan for a day -> list_tasks.
+  A message may contain several requests: call one tool per request, all in the same turn.
+  Name habits and tasks with a short lowercase Turkish phrase in the user's words, in base form
+  ("ingilizce okuma", "diksiyon", "faturayı öde").

@@ -11,6 +11,8 @@ Two rules keep it fast and safe:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pydantic
 
 from erranderpy.core.llm import LLMProvider, Message
@@ -31,14 +33,23 @@ class TooManySteps(Exception):
     pass
 
 
-def build_agent_prompt(agent: Agent) -> str:
-    return f"{agent.system_prompt}\n\n{COMMON_INSTRUCTIONS}"
+def build_agent_prompt(agent, now: datetime | None = None) -> str:
+    """The agent's own prompt + rules for every agent + today's date.
+
+    The date goes last: it changes daily, and providers cache the *start* of a
+    prompt, so the stable part stays cacheable. The model uses it only to pick
+    words like "tomorrow" or "thursday"; the actual date math is done in code.
+    """
+    prompt = f"{agent.system_prompt}\n\n{COMMON_INSTRUCTIONS}"
+    if now is not None:
+        prompt += f"\n\nToday is {now:%A}, {now:%Y-%m-%d}."
+    return prompt
 
 
 def run_agent(llm: LLMProvider, agent: Agent, text: str, ctx: ToolContext, history: list[Message]) -> str:
     assert ctx.tracer is not None
     messages = [*history, Message.user(text)]
-    system = build_agent_prompt(agent)
+    system = build_agent_prompt(agent, ctx.now)
 
     for step in range(MAX_STEPS):
         with ctx.tracer.span("agent.llm", agent=agent.name, input=text if step == 0 else f"step {step + 1}") as span:

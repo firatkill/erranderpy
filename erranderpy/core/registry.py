@@ -4,6 +4,7 @@
       agent.yaml     name, description, examples, system_prompt   (required)
       tools.py       functions marked with @tool                  (required)
       schema.sql     CREATE TABLE IF NOT EXISTS ...               (optional)
+      jobs.py        functions marked with @daily (scheduled)     (optional)
       messages.yaml  reply templates per language                 (optional)
       evals.yaml     eval cases for this agent's tools            (optional)
 
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,7 @@ from typing import Any
 import yaml
 
 from erranderpy.core.db import Database
+from erranderpy.core.jobs import Job, get_job
 from erranderpy.core.llm import ToolSpec
 from erranderpy.core.tools import Tool, get_tool
 
@@ -43,6 +46,7 @@ class Agent:
     system_prompt: str
     tools: dict[str, Tool]
     messages: dict[str, dict[str, str]] = field(default_factory=dict)  # language -> key -> template
+    jobs: list[Job] = field(default_factory=list)
     path: Path | None = None
 
     @property
@@ -82,6 +86,7 @@ def load_agent(folder: Path) -> Agent:
             raise AgentLoadError(f"{folder}/agent.yaml: '{key}' is required")
 
     tools = _load_tools(folder, name)
+    jobs = _load_jobs(folder, name)
     messages = _read_yaml(folder / "messages.yaml", required=False)
     return Agent(
         name=name,
@@ -90,21 +95,35 @@ def load_agent(folder: Path) -> Agent:
         system_prompt=str(config["system_prompt"]).strip(),
         tools=tools,
         messages={lang: {k: str(v) for k, v in (table or {}).items()} for lang, table in messages.items()},
+        jobs=jobs,
         path=folder,
     )
 
 
-def _load_tools(folder: Path, agent_name: str) -> dict[str, Tool]:
-    path = folder / "tools.py"
-    if not path.exists():
-        raise AgentLoadError(f"{folder}: tools.py is missing")
-    module_name = f"erranderpy_agents.{agent_name}.tools"
+def _import(folder: Path, agent_name: str, filename: str):
+    path = folder / filename
+    module_name = f"erranderpy_agents.{agent_name}.{path.stem}"
+    # Register empty parent packages so an agent's jobs.py can write
+    # `from erranderpy_agents.<name>.tools import ...`.
+    for parent in ("erranderpy_agents", f"erranderpy_agents.{agent_name}"):
+        if parent not in sys.modules:
+            package = types.ModuleType(parent)
+            package.__path__ = []
+            sys.modules[parent] = package
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise AgentLoadError(f"{path}: cannot be imported")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module  # needed so Pydantic can resolve the module's types
     spec.loader.exec_module(module)
+    return module, module_name
+
+
+def _load_tools(folder: Path, agent_name: str) -> dict[str, Tool]:
+    path = folder / "tools.py"
+    if not path.exists():
+        raise AgentLoadError(f"{folder}: tools.py is missing")
+    module, module_name = _import(folder, agent_name, "tools.py")
 
     tools: dict[str, Tool] = {}
     for value in vars(module).values():
@@ -114,6 +133,18 @@ def _load_tools(folder: Path, agent_name: str) -> dict[str, Tool]:
     if not tools:
         raise AgentLoadError(f"{path}: no functions marked with @tool")
     return tools
+
+
+def _load_jobs(folder: Path, agent_name: str) -> list[Job]:
+    if not (folder / "jobs.py").exists():
+        return []
+    module, module_name = _import(folder, agent_name, "jobs.py")
+    jobs = []
+    for value in vars(module).values():
+        found = get_job(value)
+        if found is not None and getattr(value, "__module__", None) == module_name:
+            jobs.append(Job(found.name, found.fn, found.at, found.env, agent=agent_name))
+    return jobs
 
 
 def _read_yaml(path: Path, required: bool) -> dict[str, Any]:

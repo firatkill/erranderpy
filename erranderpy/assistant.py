@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from erranderpy.core import messages
 from erranderpy.core.db import Database
+from erranderpy.core.jobs import Job
 from erranderpy.core.llm import LLMError, LLMProvider, Message
 from erranderpy.core.registry import Agent
 from erranderpy.core.router import UNKNOWN, Route, route
@@ -72,11 +73,26 @@ class Assistant:
 
     # --- steps ---------------------------------------------------------------
 
-    def _handle_route(self, r: Route, user_id: int, chat_id: int, history: list[Message], tracer: Tracer) -> str:
-        agent = self.agents.get(r.agent)
-        if agent is None or r.agent == UNKNOWN:
-            return self._fallback(r.text, history, tracer)
-        ctx = ToolContext(
+    def run_job(self, job: Job, user_id: int, chat_id: int) -> str | None:
+        """Run one scheduled job for the owner. Returns text to send, or None."""
+        agent = self.agents[job.agent]
+        with self._lock:
+            tracer = Tracer(self.db)
+            ctx = self._context(agent, user_id, chat_id, tracer)
+            try:
+                with tracer.span("job.run", agent=agent.name, tool=job.name) as span:
+                    text = job.fn(ctx)
+                    span.output = text
+            except Exception:
+                log.exception("job %s.%s failed (trace %s)", agent.name, job.name, tracer.trace_id)
+                return None
+            if text:
+                # Keep it in the history so "thanks!" after the summary has context.
+                self.db.save_message(chat_id, "assistant", text, tracer.trace_id)
+            return text or None
+
+    def _context(self, agent: Agent, user_id: int, chat_id: int, tracer: Tracer) -> ToolContext:
+        return ToolContext(
             db=self.db,
             user_id=user_id,
             chat_id=chat_id,
@@ -84,7 +100,12 @@ class Assistant:
             messages=agent.messages_for(self.language),
             tracer=tracer,
         )
-        return run_agent(self.llm, agent, r.text, ctx, history)
+
+    def _handle_route(self, r: Route, user_id: int, chat_id: int, history: list[Message], tracer: Tracer) -> str:
+        agent = self.agents.get(r.agent)
+        if agent is None or r.agent == UNKNOWN:
+            return self._fallback(r.text, history, tracer)
+        return run_agent(self.llm, agent, r.text, self._context(agent, user_id, chat_id, tracer), history)
 
     def _fallback(self, text: str, history: list[Message], tracer: Tracer) -> str:
         abilities = "\n".join(f"- {a.description}" for a in self.agents.values()) or "- nothing yet"

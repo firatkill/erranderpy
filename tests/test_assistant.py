@@ -116,3 +116,24 @@ def test_routes_for_the_same_agent_are_merged():
 
     result = route_answer(("shopping", "2 paket makarna"), ("unknown", "selam"), ("shopping", "süt"))
     assert parse_routes(result, ["shopping"], "x") == [Route("shopping", "2 paket makarna, süt"), Route("unknown", "selam")]
+
+
+def test_scheduled_job_runs_under_the_assistant_and_lands_in_history():
+    assistant, _, db = make([])
+    job = next(j for j in assistant.agents["tasks"].jobs if j.name == "evening_summary")
+    assert assistant.run_job(job, USER, CHAT) is None  # empty day, nothing sent
+    db.execute(
+        "INSERT INTO tasks (user_id, day, title, title_key, created_at) VALUES (?, date('now'), 'fatura', 'fatura', '')",
+        (USER,),
+    )
+    # The task above is stored with SQLite's UTC date; the job uses the user's local date.
+    # Re-insert for the local day to be safe around midnight.
+    from datetime import datetime
+
+    today = datetime.now(ZoneInfo("Europe/Istanbul")).date().isoformat()
+    db.execute("UPDATE tasks SET day = ?", (today,))
+    text = assistant.run_job(job, USER, CHAT)
+    assert text.startswith("🌙 Günün özeti")
+    assert db.recent_messages(CHAT, 1)[0]["text"] == text
+    trace_id = db.recent_messages(CHAT, 1)[0]["trace_id"]
+    assert [s["step"] for s in load_trace(db, trace_id)] == ["job.run"]

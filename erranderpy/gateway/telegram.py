@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -17,7 +18,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from erranderpy.assistant import Assistant
 from erranderpy.core import messages
-from erranderpy.pairing import Pairing
+from erranderpy.core.jobs import Job
+from erranderpy.pairing import OWNER_CHAT_KEY, Pairing
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +27,9 @@ TELEGRAM_MAX_CHARS = 4096
 TYPING_REFRESH_S = 4  # Telegram shows "typing…" for ~5 s per call
 
 
-def build_application(token: str, assistant: Assistant, pairing: Pairing, language: str) -> Application:
+def build_application(
+    token: str, assistant: Assistant, pairing: Pairing, language: str, timezone: ZoneInfo
+) -> Application:
     app = Application.builder().token(token).build()
 
     async def guard(update: Update) -> bool:
@@ -66,6 +70,24 @@ def build_application(token: str, assistant: Assistant, pairing: Pairing, langua
         if await guard(update):
             text = await asyncio.to_thread(assistant.last_trace_text, update.effective_chat.id)
             await send(update.effective_message, text)
+
+    async def run_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+        job: Job = context.job.data
+        owner = pairing.owner_id
+        chat_id = assistant.db.get_setting(OWNER_CHAT_KEY)
+        if owner is None or chat_id is None:
+            return  # not paired yet: nobody to run it for
+        text = await asyncio.to_thread(assistant.run_job, job, owner, int(chat_id))
+        if text:
+            await context.bot.send_message(int(chat_id), text[:TELEGRAM_MAX_CHARS])
+
+    for agent in assistant.agents.values():
+        for job in agent.jobs:
+            at = job.time_of_day()
+            if at is None:
+                log.info("job %s.%s is turned off", agent.name, job.name)
+                continue
+            app.job_queue.run_daily(run_job, time=at.replace(tzinfo=timezone), data=job, name=f"{agent.name}.{job.name}")
 
     app.add_handler(CommandHandler(["start", "help"], on_help))
     app.add_handler(CommandHandler("status", on_status))

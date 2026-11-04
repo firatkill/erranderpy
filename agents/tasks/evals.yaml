@@ -1,0 +1,54 @@
+# Tool eval cases for this agent. Matching rules: evals/tools_tr.yaml.
+# `expect: {tool, args}` checks the first tool call; `expect: {calls: [...]}`
+# checks all tool calls of the turn (order doesn't matter).
+# Never copy these sentences into agent.yaml `examples`.
+cases:
+  # --- habits ---------------------------------------------------------------
+  - id: task01
+    message: "bundan sonra günde 1 saat ingilizce çalışacağım"
+    expect: {tool: create_habit, args: {name: "~ingilizce", daily_minutes: 60}}
+  - id: task02
+    message: "her gün yarım saat kitap okumak istiyorum"
+    expect: {tool: create_habit, args: {name: "~kitap", daily_minutes: 30}}
+  - id: task03
+    message: "diksiyon alıştırmaları yapmalıyım"
+    expect: {tool: create_habit, args: {name: "~diksiyon"}}
+  - id: task04
+    message: "ingilizceyi günde 45 dakikaya çıkaralım"
+    expect: {tool: create_habit, args: {name: "~ingilizce", daily_minutes: 45}}
+  - id: task05
+    message: "artık sabah koşusu yapmayacağım"
+    expect: {tool: stop_habit, args: {name: "~koşu"}}
+  # from real use (Telegram, 2026-11-04): two habits in one message, one without a duration
+  - id: task06
+    message: "Her gün 30dk ingilizce okuma yapmam lazım. Ayrıca diksiyon alıştırmaları yapmalıyım"
+    expect:
+      calls:
+        - {tool: create_habit, args: {name: "~ingilizce", daily_minutes: 30}}
+        - {tool: create_habit, args: {name: "~diksiyon"}}
+  # --- progress ---------------------------------------------------------------
+  - id: task07
+    message: "bugün 30 dk ingilizce çalıştım"
+    expect: {tool: log_progress, args: {habit: "~ingilizce", minutes: 30}}
+  - id: task08
+    message: "bugün bir buçuk saat ingilizce çalıştım"
+    expect: {tool: log_progress, args: {habit: "~ingilizce", minutes: 90}}
+  # --- one-off tasks ----------------------------------------------------------
+  - id: task09
+    message: "yarın faturayı öde"
+    expect: {tool: add_task, args: {title: "~fatura", when: tomorrow}}
+  - id: task10
+    message: "bugün annemi aramam lazım"
+    expect: {tool: add_task, args: {title: "~anne", when: today}}
+  - id: task11
+    message: "perşembe kuaföre gitmem lazım"
+    expect: {tool: add_task, args: {title: "~kuaför", when: thursday}}
+  - id: task12
+    message: "faturayı ödedim"
+    expect: {tool: complete_task, args: {title: "~fatura"}}
+  - id: task13
+    message: "bugün ne kaldı?"
+    expect: {tool: list_tasks, args: {day: today}}
+  - id: task14
+    message: "yarın için planım ne"
+    expect: {tool: list_tasks, args: {day: tomorrow}}

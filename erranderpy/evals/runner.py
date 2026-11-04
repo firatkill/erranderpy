@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ import yaml
 from erranderpy.core.llm import LLMError, LLMProvider, LLMResult, Message
 from erranderpy.core.registry import AGENTS_DIR, load_agents
 from erranderpy.core.router import build_router_prompt, parse_routes, route_tool
-from erranderpy.core.runtime import COMMON_INSTRUCTIONS
+from erranderpy.core.runtime import build_agent_prompt
 from erranderpy.evals.fixtures import PROTOTYPES
 from erranderpy.evals.scoring import match, same_agents
 
@@ -94,7 +95,7 @@ def run_router_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
 def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
     result = CaseResult("tools", case["id"], case["message"], case["expect"])
     agent = eval_agents()[case["agent"]]
-    system = f"{agent.system_prompt}\n\n{COMMON_INSTRUCTIONS}"  # same prompt as runtime.build_agent_prompt
+    system = build_agent_prompt(agent, datetime.now())  # exactly the prompt the bot uses
     try:
         llm = provider.complete(system, [Message.user(case["message"])], tools=agent.tool_specs)
     except LLMError as exc:
@@ -106,12 +107,19 @@ def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
         result.error = "no_tool_call"
         result.actual = llm.text[:200]
         return result
+    expect = case["expect"]
+    if "calls" in expect:
+        # Several requests in one message: compare every call of the turn.
+        actual = [{"tool": c.name, "args": c.arguments} for c in llm.tool_calls]
+        result.actual = actual
+        result.passed = match(expect["calls"], actual)
+        return result
     call = llm.tool_calls[0]
     result.actual = {"tool": call.name, "args": call.arguments}
-    if call.name != case["expect"]["tool"]:
+    if call.name != expect["tool"]:
         result.error = "wrong_tool"
         return result
-    result.passed = match(case["expect"].get("args", {}), call.arguments)
+    result.passed = match(expect.get("args", {}), call.arguments)
     return result
 
 
@@ -121,5 +129,9 @@ RUNNERS = {"router": run_router_case, "tools": run_tool_case}
 def run_suite(provider: LLMProvider, suite: str, runs: int = 1) -> list[CaseResult]:
     cases = load_cases(suite) * runs
     runner = RUNNERS[suite]
+    # Load agents once, *before* starting threads. Importing the same agent
+    # modules from four threads at once lets one import overwrite another's
+    # half-finished module (a race condition we actually hit).
+    eval_agents()
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         return list(pool.map(lambda case: runner(provider, case), cases))

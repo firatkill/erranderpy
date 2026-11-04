@@ -7,6 +7,7 @@ editing core code.
 agents/<name>/
   agent.yaml     name (= folder name), description, examples, system_prompt   required
   tools.py       functions marked with @tool                                 required
+  jobs.py        functions marked with @daily (run at a time of day)         optional
   schema.sql     CREATE TABLE IF NOT EXISTS ... for this agent's data        optional
   messages.yaml  reply templates per language (tr, en)                       optional
   evals.yaml     eval cases for this agent's tool calls                      optional
@@ -36,6 +37,19 @@ def add_items(ctx: ToolContext, items: list[Item]) -> str:
 - Use `ctx.db` with `?` placeholders, never f-strings in SQL.
 - Do the work in code (dates, counting, matching); the model only decides.
 - Return `ToolResult(text, final=False)` if the model should see the result and continue.
+
+## Scheduled jobs
+
+```python
+from erranderpy.core.jobs import daily
+
+@daily(at="21:00", env="SUMMARY_TIME")       # env lets users move it or turn it "off"
+def evening_summary(ctx: ToolContext) -> str | None:
+    ...                                       # returned text is sent to the owner; None sends nothing
+```
+
+`jobs.py` can import helpers from the same agent's tools: `from erranderpy_agents.<name>.tools import ...`.
+Make jobs idempotent: they may run twice, or not at all if the machine was asleep.
 
 ## Checking a new agent
 

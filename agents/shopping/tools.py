@@ -9,7 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from erranderpy.core.db import utc_now_iso
-from erranderpy.core.text import normalize
+from erranderpy.core.text import find_unique, normalize
 from erranderpy.core.tools import ToolContext, tool
 
 
@@ -117,18 +117,13 @@ def _find_pending(ctx: ToolContext, key: str):
 
 
 def _match_pending(ctx: ToolContext, key: str):
-    """Exact name first; otherwise a partial match, but only if it is unambiguous.
-
-    "yağ" should not silently close "zeytinyağı" if "ayçiçek yağı" is also on the list.
-    """
-    exact = _find_pending(ctx, key)
-    if exact is not None or not key:
-        return exact
+    """Exact name first; otherwise a loose match ("zeytin" -> "zeytinyağı"), but
+    only if it is unambiguous: "yağ" must not silently close "zeytinyağı" when
+    "ayçiçek yağı" is also on the list."""
     rows = ctx.db.query(
         "SELECT id, name, name_key FROM shopping_items WHERE user_id = ? AND status = 'pending'", (ctx.user_id,)
     )
-    candidates = [r for r in rows if key in r["name_key"] or r["name_key"] in key]
-    return candidates[0] if len(candidates) == 1 else None
+    return find_unique(key, [(r["name"], r) for r in rows])
 
 
 def _pending_count(ctx: ToolContext) -> int:

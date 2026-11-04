@@ -42,7 +42,7 @@ def test_unknown_model_has_no_price():
 
 
 def test_eval_datasets_load_and_ids_are_unique():
-    for suite, minimum in (("router", 30), ("tools", 16)):
+    for suite, minimum in (("router", 31), ("tools", 22)):
         cases = load_cases(suite)
         assert len(cases) >= minimum
         ids = [c["id"] for c in cases]
