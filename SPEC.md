@@ -73,7 +73,7 @@ Veritabanına yazmak, tarih hesaplamak, liste biçimlendirmek deterministik Pyth
 | `core/llm/` | Tek arayüz: `complete(system, messages, tools)`. Arkada model değiştirilebilir (bkz. §5) |
 | `erranderpy/core/db.py` | SQLite; `messages` tablosu = kısa süreli hafıza (son 6 mesaj). `facts` (uzun süreli) Aşama 2'de |
 | `erranderpy/core/tracing.py` | Her adımı `traces` tablosuna yazar (bkz. §8); Telegram'da `/trace` |
-| `scheduler.py` | Zamanlanmış işler |
+| `erranderpy/core/jobs.py` | Agent'ların `jobs.py`'deki `@daily` işleri; gateway JobQueue ile kurar (ADR-0010) |
 | `oncall/` | Oncall agent'ı (kendisi de bir agent, ama ayrı kanaldan konuşur) |
 
 ---
@@ -89,6 +89,7 @@ agents/
     tools.py        # @tool ile işaretli Python fonksiyonları
     schema.sql      # (opsiyonel) bu agent'ın tabloları: CREATE TABLE IF NOT EXISTS
     messages.yaml   # (opsiyonel) cevap şablonları (tr, en)
+    jobs.py         # (opsiyonel) @daily ile zamanlanmış işler
     evals.yaml      # bu agent'ın test mesajları ve beklenen sonuçlar
   tasks/
     ...
@@ -194,17 +195,25 @@ Sonuç README'de yayınlanır.
 ## 6. Veri modeli (SQLite)
 
 ```
-shopping_items  id, name, qty, unit, status(pending|bought|removed), created_at, bought_at
-habits          id, name, daily_target_min, active, created_at
-tasks           id, date, title, habit_id NULL, target_min NULL, done_min, status(open|done|skipped)
-facts           id, key, value, source_trace_id, updated_at      -- uzun süreli hafıza
+-- çekirdek (erranderpy/core/db.py)
+settings        key, value                                        -- sahip (eşleştirme) vb.
 messages        id, chat_id, role, text, trace_id, created_at     -- kısa süreli hafıza
-traces          id, trace_id, step, agent, input, output, tool, latency_ms, tokens_in, tokens_out, cost_usd, error, created_at
-feedback        id, trace_id, kind(correction|thumbs_down), text, created_at
+traces          id, trace_id, step, agent, tool, input, output, latency_ms, tokens_in, tokens_out, cost_usd, error, created_at
+-- shopping (agents/shopping/schema.sql)
+shopping_items  id, user_id, name, name_key, quantity NULL, status(pending|bought|removed), created_at, done_at
+-- tasks (agents/tasks/schema.sql)
+habits          id, user_id, name, name_key, daily_minutes NULL, active, created_at, ended_at
+tasks           id, user_id, day (yerel YYYY-MM-DD), title, title_key, habit_id NULL, target_minutes NULL,
+                done_minutes, status(open|done), created_at, done_at
+                UNIQUE (habit_id, day) WHERE habit_id IS NOT NULL   -- idempotency (ADR-0010)
+-- planlanan
+facts           id, key, value, source_trace_id, updated_at      -- uzun süreli hafıza (ertelendi)
+feedback        id, trace_id, kind(correction|thumbs_down), text, created_at   -- Aşama 3
 ```
 
 - Saat dilimi: `Europe/Istanbul`; tüm "bugün/yarın" hesapları kodda yapılır, LLM'e bırakılmaz.
-- Gece 00:00: aktif her alışkanlık için o güne `tasks` kaydı oluşturulur (idempotent).
+- Gece 00:01 (zamanlanmış iş) **ve** her tool çağrısından önce: aktif her alışkanlık için o güne `tasks` kaydı oluşturulur (idempotent, ADR-0010).
+- Akşam `SUMMARY_TIME` (varsayılan 21:00, `off` ile kapanır): günün özeti, LLM'siz, şablondan.
 
 ---
 
@@ -367,7 +376,7 @@ devam eder (polling kaçan mesajları da alır). Kesintisiz çalışma isteyen k
 |---|---|---|
 | **0. LLM katmanı + model seçimi** | 2 adaptör, sağlayıcı seçimi, 30 mesajlık Türkçe eval seti, `make compare` | 4 sağlayıcı sözleşme testlerini geçiyor, karşılaştırma raporu hazır |
 | **1. Çekirdek + shopping + kurulum** ✅ | `start.sh`, sihirbaz, eşleştirme, Telegram, registry, router, runtime, tracing, shopping agent, `make doctor` | Temiz klondan 2 komutla bot çalışıyor; §2'deki alışveriş satırları geçiyor |
-| **2. tasks + scheduler** | tasks agent, alışkanlıklar, gece işi, akşam özeti | §2'nin tamamı geçiyor, eval ≥ %90 |
+| **2. tasks + scheduler** ✅ | tasks agent, alışkanlıklar, gece işi, akşam özeti | §2'nin tamamı geçiyor, eval ≥ %90 |
 | **3. Oncall** | oncall agent, günlük rapor, chaos testleri | 5 enjekte hatanın ≥ 4'ünü doğru teşhis |
 | **4. Platformlaşma + yayın** | `make new-agent`, 3. agent'ı 30 dakikada ekleme, Docker, README, demo videosu | Yeni agent çekirdeğe dokunmadan eklendi; repo herkese açık |
 
