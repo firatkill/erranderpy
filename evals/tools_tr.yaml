@@ -1,0 +1,76 @@
+# Tool eval: given the right agent, does the model call the right tool with the
+# right arguments?
+#
+# Argument matching (see erranderpy/evals/scoring.py):
+#   - strings are compared after Turkish-aware lowercasing and trimming
+#   - "~text" means "contains text" (for free-form titles and names)
+#   - lists must have the same length; order does not matter
+#   - only the keys written here are checked; extra keys are allowed
+suite: tools
+cases:
+  # --- shopping -----------------------------------------------------------
+  - id: t01
+    agent: shopping
+    message: "zeytinyağı almam lazım"
+    expect: {tool: add_items, args: {items: [{name: zeytinyağı}]}}
+  - id: t02
+    agent: shopping
+    message: "2 paket makarna ve süt ekle"
+    expect: {tool: add_items, args: {items: [{name: makarna, quantity: 2}, {name: süt}]}}
+  - id: t03
+    agent: shopping
+    message: "makarnayı aldım"
+    expect: {tool: mark_bought, args: {names: [makarna]}}
+  - id: t04
+    agent: shopping
+    message: "listede ne var?"
+    expect: {tool: list_items, args: {}}
+  - id: t05
+    agent: shopping
+    message: "sütü listeden çıkar, vazgeçtim"
+    expect: {tool: remove_items, args: {names: [süt]}}
+  - id: t06
+    agent: shopping
+    message: "domatesleri, biberi ve ekmeği aldım"
+    expect: {tool: mark_bought, args: {names: [domates, biber, ekmek]}}
+  - id: t07
+    agent: shopping
+    message: "deterjan bitti"
+    expect: {tool: add_items, args: {items: [{name: deterjan}]}}
+  - id: t08
+    agent: shopping
+    message: "3 tane avokado lazım"
+    expect: {tool: add_items, args: {items: [{name: avokado, quantity: 3}]}}
+  # --- tasks --------------------------------------------------------------
+  - id: t09
+    agent: tasks
+    message: "bundan sonra günde 1 saat ingilizce çalışacağım"
+    expect: {tool: create_habit, args: {name: "~ingilizce", daily_minutes: 60}}
+  - id: t10
+    agent: tasks
+    message: "her gün yarım saat kitap okumak istiyorum"
+    expect: {tool: create_habit, args: {name: "~kitap", daily_minutes: 30}}
+  - id: t11
+    agent: tasks
+    message: "bugün 30 dk ingilizce çalıştım"
+    expect: {tool: log_progress, args: {habit: "~ingilizce", minutes: 30}}
+  - id: t12
+    agent: tasks
+    message: "bugün bir buçuk saat ingilizce çalıştım"
+    expect: {tool: log_progress, args: {habit: "~ingilizce", minutes: 90}}
+  - id: t13
+    agent: tasks
+    message: "yarın faturayı öde"
+    expect: {tool: add_task, args: {title: "~fatura", when: tomorrow}}
+  - id: t14
+    agent: tasks
+    message: "bugün annemi aramam lazım"
+    expect: {tool: add_task, args: {title: "~anne", when: today}}
+  - id: t15
+    agent: tasks
+    message: "bugün ne kaldı?"
+    expect: {tool: list_tasks, args: {day: today}}
+  - id: t16
+    agent: tasks
+    message: "faturayı ödedim"
+    expect: {tool: complete_task, args: {title: "~fatura"}}

@@ -1,0 +1,40 @@
+# Router eval: does the model send each request to the right agent?
+# `expect` is the list of agents, order does not matter.
+# Never copy these sentences into a prompt (see "Evals" in AGENTS.md).
+suite: router
+cases:
+  # --- shopping -----------------------------------------------------------
+  - {id: r01, message: "zeytinyağı almam lazım", expect: [shopping]}
+  - {id: r02, message: "2 paket makarna, bir de süt", expect: [shopping]}
+  - {id: r03, message: "makarnayı aldım", expect: [shopping]}
+  - {id: r04, message: "alışveriş listemde neler var?", expect: [shopping]}
+  - {id: r05, message: "deterjan bitmiş", expect: [shopping]}
+  - {id: r06, message: "domatesi listeden çıkar, evde varmış", expect: [shopping]}
+  - {id: r07, message: "markete gidince peynir ve zeytin al", expect: [shopping]}
+  - {id: r08, message: "tuvalet kağıdı", expect: [shopping]}
+  # --- tasks --------------------------------------------------------------
+  - {id: r09, message: "bundan sonra günde 1 saat ingilizce çalışacağım", expect: [tasks]}
+  - {id: r10, message: "bugün 30 dk ingilizce çalıştım", expect: [tasks]}
+  - {id: r11, message: "yarın faturayı öde", expect: [tasks]}
+  - {id: r12, message: "bugün ne kaldı?", expect: [tasks]}
+  - {id: r13, message: "faturayı ödedim", expect: [tasks]}
+  - {id: r14, message: "her sabah 10 dakika esneme yapmak istiyorum", expect: [tasks]}
+  - {id: r15, message: "kitap okumaya 45 dakika ayırdım bugün", expect: [tasks]}
+  - {id: r16, message: "perşembe kuaföre gitmeyi hatırlat", expect: [tasks]}
+  - {id: r17, message: "yarın için planım ne", expect: [tasks]}
+  - {id: r18, message: "annemi aramam lazım bugün", expect: [tasks]}
+  # --- tricky: shopping words inside a task, and vice versa ----------------
+  - {id: r19, message: "yarın markete gitmeyi unutmayayım", expect: [tasks]}
+  - {id: r20, message: "ingilizce kitabı almam lazım", expect: [shopping]}
+  - {id: r21, message: "süt şu an kaç lira?", expect: [unknown]}
+  - {id: r22, message: "süt aldım mı ben?", expect: [shopping]}
+  # --- several requests in one message -----------------------------------
+  - {id: r23, message: "zeytinyağı al, bir de bugün 20 dk ingilizce çalıştım", expect: [shopping, tasks]}
+  - {id: r24, message: "ekmeği aldım, yarın da kargoyu teslim almayı ekle", expect: [shopping, tasks]}
+  - {id: r25, message: "bugün 1 saat kitap okudum ve kahve bitti", expect: [tasks, shopping]}
+  - {id: r26, message: "pil al, yarın da pilleri değiştirmeyi hatırlat", expect: [shopping, tasks]}
+  # --- unknown ------------------------------------------------------------
+  - {id: r27, message: "selam", expect: [unknown]}
+  - {id: r28, message: "bugün hava nasıl olacak?", expect: [unknown]}
+  - {id: r29, message: "hmm", expect: [unknown]}
+  - {id: r30, message: "teşekkürler, harikasın", expect: [unknown]}

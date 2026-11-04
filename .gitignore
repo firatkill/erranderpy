@@ -15,8 +15,8 @@ __pycache__/
 dist/
 build/
 
-# Generated reports (model comparisons are committed manually when worth sharing)
-reports/*.tmp.md
+# Eval reports (commit one on purpose with `git add -f` when worth sharing)
+reports/
 
 # OS / editors
 .DS_Store

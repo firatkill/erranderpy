@@ -27,6 +27,15 @@ git clone https://github.com/firatkill/erranderpy.git && cd erranderpy
 The setup wizard asks for a Telegram bot token and one LLM API key, then prints a pairing code.
 Send that code to your bot and start chatting.
 
+## Development
+
+```bash
+make test       # offline tests, no API calls
+make test-live  # contract tests against every provider with a key in .env (< $0.01)
+make eval       # Turkish eval set with the provider the bot would use
+make compare    # same eval set on every provider with a key → reports/eval-*.md
+```
+
 ## Roadmap
 
 | Stage | What | Status |
