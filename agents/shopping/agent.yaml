@@ -2,7 +2,7 @@ name: shopping
 
 # The router reads `description` and `examples` to decide which messages come here.
 # Never copy sentences from evals.yaml or evals/router_tr.yaml into `examples`.
-description: "Manages the shopping list: adds, removes and checks off items, shows the list."
+description: "Manages the shopping list: adds, removes and checks off items, clears the whole list (and undoes that), shows the list."
 examples:
   - "süt almam lazım"
   - "listede ne var"
@@ -17,3 +17,4 @@ system_prompt: |
   Set quantity only when the user gives a number of units; otherwise leave it out.
   If the user says something ran out or is finished, add it to the list.
   If the user asks what is on the list or whether they bought something, call list_items.
+  To empty the whole list, call clear_list. "geri al" / "undo" right after a clear -> undo_clear.

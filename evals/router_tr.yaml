@@ -66,3 +66,10 @@ cases:
       - [user, "5 kasımda saat 1.30 da toplantım var"]
       - [assistant, "🧩 Yeni yetenek önerisi: 📅 Takvim\nHer etkinlik için: etkinlik (metin, zorunlu) · tarih ve saat (tarih-saat, zorunlu) · notlar (metin)\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
     expect: [builder]
+  - {id: r38, message: "Listedekilerin tümünü temizle.", expect: [shopping]}
+  - id: r39
+    message: "geri al"
+    history:
+      - [user, "listeyi boşalt"]
+      - [assistant, "🧹 Listeyi temizledim (5 ürün: ekmek, cips, kola, domates, yoğurt). Yanlışlıkla olduysa \"geri al\" yaz."]
+    expect: [shopping]

@@ -11,6 +11,9 @@ tr:
   list_header: "🛒 Alınacaklar:"
   list_empty: "Listen boş 🎉"
   bought_today: "Bugün aldıkların: {items}"
+  cleared: "🧹 Listeyi temizledim ({count} ürün: {items}). Yanlışlıkla olduysa \"geri al\" yaz."
+  restored: "↩️ Geri aldım. Listede {count} ürün var."
+  nothing_to_undo: "Geri alınacak bir temizleme yok."
 en:
   added: "🛒 Added: {items}."
   updated: "✏️ Updated: {items}."
@@ -22,3 +25,6 @@ en:
   list_header: "🛒 To buy:"
   list_empty: "Your list is empty 🎉"
   bought_today: "Bought today: {items}"
+  cleared: "🧹 Cleared the list ({count} items: {items}). If that was a mistake, write \"undo\"."
+  restored: "↩️ Undone. {count} items on the list."
+  nothing_to_undo: "There is no clear to undo."

@@ -54,7 +54,7 @@ def test_full_flow_creates_agent_and_handles_the_original_request(tmp_path):
 
     reply = assistant.handle(USER, CHAT, "evet")
     assert reply.startswith("✅ 📅 Takvim eklendi!")
-    assert "📅 Kaydettim: AVM · 11.11 Çarşamba 14:00." in reply
+    assert "📅 Kaydettim (#1): AVM · 11.11 Çarşamba 14:00." in reply
     assert (tmp_path / "calendar" / "agent.yaml").exists()
     assert assistant.agents["calendar"].created_by == "builder"
     assert "calendar" in assistant.agents and list(assistant.agents)[-1] == "builder"  # builder stays last

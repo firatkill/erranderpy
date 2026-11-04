@@ -67,3 +67,16 @@ def test_items_are_per_user(shop):
     agent = load_agents(db=db)["shopping"]
     other = ToolContext(db=db, user_id=7, chat_id=7, now=datetime.now(ZoneInfo("UTC")), messages=agent.messages_for("en"))
     assert agent.tools["list_items"].run(other, {}).text == "Your list is empty 🎉"
+
+
+def test_clear_list_and_undo(shop):
+    shop("add_items", items=[{"name": "ekmek"}, {"name": "cips"}, {"name": "kola"}])
+    shop("mark_bought", names=["kola"])
+    assert shop("clear_list") == '🧹 Listeyi temizledim (2 ürün: ekmek, cips). Yanlışlıkla olduysa "geri al" yaz.'
+    assert shop("list_items").startswith("Listen boş")
+    assert shop("undo_clear") == "↩️ Geri aldım. Listede 2 ürün var."
+    assert "Bugün aldıkların: kola" in shop("list_items")  # bought items are not touched
+    assert shop("undo_clear") == "Geri alınacak bir temizleme yok."
+    shop("clear_list")
+    shop("clear_list")  # second clear on an empty list doesn't lose the undo of the first
+    assert shop("undo_clear").startswith("↩️")

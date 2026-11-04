@@ -1,0 +1,15 @@
+# Like the user's real calendar from 2026-11-04: created before default reminders
+# existed, so it has no automatic reminders. Reminders come only when asked for.
+name: appointments
+kind: records
+title: "📅 Randevular"
+item: randevu
+description: Keeps meetings and appointments at a date and clock time.
+examples:
+  - "cuma 10:30'da toplantı var"
+fields:
+  - {name: title, type: text, label: başlık, required: true}
+  - {name: when, type: datetime, label: zaman, required: true}
+  - {name: notes, type: text, label: notlar}
+reminders: []
+created_by: builder

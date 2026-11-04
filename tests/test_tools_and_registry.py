@@ -99,5 +99,5 @@ def test_registry_requires_tools(tmp_path):
 def test_real_agents_load():
     agents = load_agents()
     assert "shopping" in agents
-    assert set(agents["shopping"].tools) == {"add_items", "remove_items", "mark_bought", "list_items"}
+    assert set(agents["shopping"].tools) == {"add_items", "remove_items", "mark_bought", "list_items", "clear_list", "undo_clear"}
     assert agents["shopping"].messages_for("tr")["added"].startswith("🛒")

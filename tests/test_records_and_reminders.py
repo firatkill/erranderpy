@@ -68,7 +68,7 @@ def test_generated_tools_and_schema():
 def test_add_list_update_delete_with_reminders():
     cal = Calendar()
     reply = cal("add_entry", title="AVM", when="2026-11-11 14:00", place="Kadıköy").text
-    assert reply == "📅 Kaydettim: AVM · 11.11 Çarşamba 14:00 · Kadıköy. ⏰ 11.11 Çarşamba 13:00 hatırlatacağım."
+    assert reply == "📅 Kaydettim (#1): AVM · 11.11 Çarşamba 14:00 · Kadıköy. ⏰ 11.11 Çarşamba 13:00 hatırlatacağım."
     assert cal.pending() == [{"due_at": "2026-11-11T10:00:00+00:00", "text": "⏰ Hatırlatma: AVM · 11.11 Çarşamba 14:00 · Kadıköy"}]
 
     assert cal("list_entries").text == "📅 Takvim\n#1 · AVM · 11.11 Çarşamba 14:00 · Kadıköy"
@@ -154,3 +154,43 @@ def test_summary_punctuation_and_ambiguity_label_with_minutes():
     assert "Google Meet üzerinden." in reply and ".." not in reply
     question = cal("add_entry", title="x", when="2026-11-05 01:30", time_ambiguous=True).text
     assert question == "🕑 Saat 1.30 derken öğleden sonra 13:30 mi, yoksa 01:30 mi?"
+
+
+NO_RULES = {**CALENDAR, "reminders": []}
+
+
+def test_without_rules_the_bot_offers_a_reminder_and_honours_one_per_entry():
+    cal = Calendar(NO_RULES)
+    reply = cal("add_entry", title="Google Meet toplantısı", when="2026-11-11 15:00").text
+    assert reply.endswith('⏰ Hatırlatma ister misin? Örneğin "1 saat önce hatırlat" yazman yeterli.')
+    assert cal.pending() == []
+
+    # "1 saat önce hatırlat" -> update_entry with remind_before_minutes
+    reply = cal("update_entry", entry="#1", remind_before_minutes=60).text
+    assert "⏰ 11.11 Çarşamba 14:00 hatırlatacağım." in reply
+    # moving the meeting moves its reminder too: the request is stored in the entry
+    cal("update_entry", entry="#1", when="2026-11-08 15:00")
+    assert [r["due_at"] for r in cal.pending()] == ["2026-11-08T11:00:00+00:00"]
+    assert "_remind_before" not in cal("list_entries").text
+
+
+def test_asked_reminder_overrides_the_default_rule_and_no_offer_when_rules_exist():
+    cal = Calendar()
+    reply = cal("add_entry", title="uçuş", when="2026-11-11 15:00", remind_before_minutes=180).text
+    assert "11.11 Çarşamba 12:00 hatırlatacağım" in reply and "ister misin" not in reply
+    assert len(cal.pending()) == 1  # only the asked one, not also the 60-minute default
+    assert "ister misin" not in cal("add_entry", title="x", when="2026-11-12 10:00").text
+
+
+def test_moving_the_day_keeps_the_time_and_changing_the_time_keeps_the_day():
+    cal = Calendar()
+    cal("add_entry", title="toplantı", when="2026-11-11 15:00")
+    assert "09.11 Pazartesi 15:00" in cal("update_entry", entry="toplantı", when="2026-11-09").text
+    assert "09.11 Pazartesi 16:30" in cal("update_entry", entry="toplantı", when="16:30").text
+    assert "10.11 Salı 09:00" in cal("update_entry", entry="toplantı", when="2026-11-10 09:00").text
+
+
+def test_regex_matcher():
+    assert match({"when": r"re:\d{4}-11-09( 15:00)?"}, {"when": "2026-11-09"})
+    assert match({"when": r"re:\d{4}-11-09( 15:00)?"}, {"when": "2026-11-09 15:00"})
+    assert not match({"when": r"re:\d{4}-11-09( 15:00)?"}, {"when": "2026-11-09 00:00"})

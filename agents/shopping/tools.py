@@ -6,6 +6,8 @@ names, counting, writing the reply) happens here in plain code.
 
 from __future__ import annotations
 
+import json
+
 from pydantic import BaseModel, Field
 
 from erranderpy.core.db import utc_now_iso
@@ -86,7 +88,46 @@ def list_items(ctx: ToolContext) -> str:
     return "\n".join(lines)
 
 
+@tool
+def clear_list(ctx: ToolContext) -> str:
+    """Remove every item still on the list (it can be undone with undo_clear)."""
+    rows = ctx.db.query(
+        "SELECT id, name FROM shopping_items WHERE user_id = ? AND status = 'pending' ORDER BY id", (ctx.user_id,)
+    )
+    if not rows:
+        return ctx.t("list_empty")
+    ctx.db.execute(
+        "UPDATE shopping_items SET status = 'removed', done_at = ? WHERE user_id = ? AND status = 'pending'",
+        (utc_now_iso(), ctx.user_id),
+    )
+    # Undo instead of "are you sure?": act at once, keep what's needed to reverse it
+    # (ADR-0015). Items are only marked removed, so restoring is one UPDATE.
+    ctx.db.set_setting(_undo_key(ctx), json.dumps([r["id"] for r in rows]))
+    return ctx.t("cleared", count=len(rows), items=", ".join(r["name"] for r in rows))
+
+
+@tool
+def undo_clear(ctx: ToolContext) -> str:
+    """Put back the items removed by the last clear_list."""
+    value = ctx.db.get_setting(_undo_key(ctx))
+    ids = json.loads(value) if value else []
+    if not ids:
+        return ctx.t("nothing_to_undo")
+    placeholders = ",".join("?" * len(ids))
+    ctx.db.execute(
+        f"UPDATE shopping_items SET status = 'pending', done_at = NULL "  # placeholders only, no user text in SQL
+        f"WHERE user_id = ? AND status = 'removed' AND id IN ({placeholders})",
+        (ctx.user_id, *ids),
+    )
+    ctx.db.execute("DELETE FROM settings WHERE key = ?", (_undo_key(ctx),))
+    return ctx.t("restored", count=_pending_count(ctx))
+
+
 # --- helpers -------------------------------------------------------------------
+
+
+def _undo_key(ctx: ToolContext) -> str:
+    return f"shopping.last_clear.{ctx.user_id}"
 
 
 def _close(ctx: ToolContext, names: list[str], status: str, done_key: str) -> str:

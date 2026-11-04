@@ -26,6 +26,7 @@ Rules for every agent:
 - Reply in the same language as the user.
 - Act only through your tools. Never say you did something without calling a tool.
 - If the request is unclear, ask one short question instead of guessing, and call no tool in that reply.
+- If none of your tools can do what the user asked, say so plainly. Never call a different tool instead.
 - Earlier messages are only context; act on the latest user message."""
 
 

@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from erranderpy.core import reminders
 from erranderpy.core.agent import Agent
-from erranderpy.core.dates import format_datetime, format_day, parse_datetime, resolve_day
+from erranderpy.core.dates import format_datetime, format_day, parse_datetime, parse_time, resolve_day
 from erranderpy.core.db import utc_now_iso
 from erranderpy.core.llm import ToolSpec
 from erranderpy.core.text import find_unique
@@ -99,7 +99,7 @@ class RecordsSpec(BaseModel):
 
 RECORDS_MESSAGES = {
     "tr": {
-        "added": "{emoji} Kaydettim: {summary}.",
+        "added": "{emoji} Kaydettim (#{id}): {summary}.",
         "updated": "✏️ Güncelledim: {summary}.",
         "deleted": "🗑️ Sildim: {summary}.",
         "not_found": "\"{entry}\" diye bir kayıt bulamadım.",
@@ -108,10 +108,11 @@ RECORDS_MESSAGES = {
         "list_empty": "{title}: kayıt yok.",
         "reminder": "⏰ Hatırlatma: {summary}",
         "ambiguous_time": "🕑 Saat {hour} derken öğleden sonra {pm} mi, yoksa {am} mi?",
+        "ask_reminder": "⏰ Hatırlatma ister misin? Örneğin \"1 saat önce hatırlat\" yazman yeterli.",
         "weekdays": "Pazartesi,Salı,Çarşamba,Perşembe,Cuma,Cumartesi,Pazar",
     },
     "en": {
-        "added": "{emoji} Saved: {summary}.",
+        "added": "{emoji} Saved (#{id}): {summary}.",
         "updated": "✏️ Updated: {summary}.",
         "deleted": "🗑️ Deleted: {summary}.",
         "not_found": "I couldn't find an entry \"{entry}\".",
@@ -120,9 +121,14 @@ RECORDS_MESSAGES = {
         "list_empty": "{title}: no entries.",
         "reminder": "⏰ Reminder: {summary}",
         "ambiguous_time": "🕑 By {hour}, do you mean {pm} in the afternoon, or {am}?",
+        "ask_reminder": "⏰ Want a reminder? Just write, for example, \"remind me an hour before\".",
         "weekdays": "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday",
     },
 }
+
+# A reminder the user asked for on one entry is stored inside the entry, so it
+# survives updates (moving the meeting moves its reminder). Not a field: hidden.
+REMIND_KEY = "_remind_before"
 
 DATE_HELP = "'today', 'tomorrow', an English weekday name, or YYYY-MM-DD"
 DATETIME_HELP = "date and 24-hour time: 'YYYY-MM-DD HH:MM' (or 'tomorrow HH:MM', 'thursday HH:MM')"
@@ -155,6 +161,20 @@ def _system_prompt(spec: RecordsSpec) -> str:
         extra = f" (one of: {', '.join(f.options or [])})" if f.type == "choice" else ""
         need = "required" if f.required else "optional"
         lines.append(f"- {f.name}: {f.type}, {need}{extra}. {f.description}".rstrip())
+    if spec.time_fields:
+        if spec.reminders:
+            rules = ", ".join(f"{r.before_minutes} min before '{r.field}'" for r in spec.reminders)
+            lines.append(
+                f"Every entry gets a reminder automatically ({rules}). If the user wants a different "
+                "reminder for one entry, set remind_before_minutes."
+            )
+        else:
+            lines.append(
+                "This ability has no automatic reminders. If the user asks to be reminded about an entry, "
+                "set remind_before_minutes (60 if they didn't say how long before). After saving, the user may "
+                "answer \"1 saat önce hatırlat\": that is update_entry on the entry just saved, with remind_before_minutes."
+            )
+        lines.append("Never write the user's instructions (e.g. 'hatırlatma', 'ekle') into fields.")
     if any(f.type == "datetime" for f in spec.fields):
         lines.append(
             "Clock times: if the user's hour could mean two times (\"saat 2\" = 02:00 or 14:00) and they gave no "
@@ -162,7 +182,12 @@ def _system_prompt(spec: RecordsSpec) -> str:
             "time_ambiguous=true: the tool then asks the user instead of saving. \"akşam 8\" is 20:00, not ambiguous."
         )
     lines += [
-        "Tools: add_entry saves a new entry, list_entries shows them, update_entry changes one, delete_entry removes one.",
+        "Tools: add_entry saves a new entry, list_entries shows them to the user, update_entry changes one, "
+        "delete_entry removes one.",
+        "To change or delete an entry, call update_entry / delete_entry directly with its #number (shown when it "
+        "was saved or listed) or words from its title. Never call list_entries first: listing ends your turn.",
+        "When updating a date-time, send only what changes: just the date (YYYY-MM-DD) to move it to another day "
+        "(the time is kept), just HH:MM to change the time (the day is kept).",
         f"Dates are {DATE_HELP}. Date-times are {DATETIME_HELP}.",
         "If a required field is missing, ask one short question and call no tool in that reply. "
         "Never invent values the user didn't give.",
@@ -205,8 +230,27 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
         if has_clock
         else {}
     )
-    add_model = _args_model(f"{spec.name}_add", spec, all_optional=False, extra=ambiguity)
-    update_model = _args_model(f"{spec.name}_update", spec, all_optional=True, extra={"entry": entry_field, **ambiguity})
+    remind = (
+        {
+            "remind_before_minutes": (
+                Annotated[
+                    int | None,
+                    Field(
+                        ge=0,
+                        le=60 * 24 * 14,
+                        description="only if the user asks to be reminded about this entry: minutes before (60 if they didn't say)",
+                    ),
+                ],
+                None,
+            )
+        }
+        if spec.time_fields
+        else {}
+    )
+    add_model = _args_model(f"{spec.name}_add", spec, all_optional=False, extra={**ambiguity, **remind})
+    update_model = _args_model(
+        f"{spec.name}_update", spec, all_optional=True, extra={"entry": entry_field, **ambiguity, **remind}
+    )
     delete_model = pydantic.create_model(f"{spec.name}_delete", entry=entry_field)
     scope = (Literal["upcoming", "all"], "upcoming") if spec.time_fields else (Literal["all"], "all")
     list_model = pydantic.create_model(
@@ -215,19 +259,30 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
         query=(Annotated[str | None, Field(description="optional words to search for")], None),
     )
 
-    def add_entry(ctx: ToolContext, time_ambiguous: bool = False, **values: Any) -> ToolResult:
+    def add_entry(
+        ctx: ToolContext, time_ambiguous: bool = False, remind_before_minutes: int | None = None, **values: Any
+    ) -> ToolResult:
         data, error = _parse_values(spec, values, ctx)
         if error:
             return ToolResult(error, final=False)  # the model fixes the value or asks the user
         if time_ambiguous and (question := _ambiguity_question(spec, data, ctx)):
             return ToolResult(question)  # nothing saved; the answer comes as the next message
+        if remind_before_minutes is not None:
+            data[REMIND_KEY] = remind_before_minutes
         now = utc_now_iso()
         cur = ctx.db.execute(
             "INSERT INTO records (user_id, agent, data, sort_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
             (ctx.user_id, spec.name, json.dumps(data, ensure_ascii=False), _sort_at(spec, data, ctx), now, now),
         )
-        text = ctx.t("added", emoji=_emoji(spec), summary=_summary(spec, data, ctx))
-        return ToolResult(_with_reminders(spec, cur.lastrowid, data, ctx, text))
+        # The #number in the reply lets the next message ("1 saat önce hatırlat")
+        # point at this entry directly, without listing first.
+        text = ctx.t("added", emoji=_emoji(spec), id=cur.lastrowid, summary=_summary(spec, data, ctx))
+        reply = _with_reminders(spec, cur.lastrowid, data, ctx, text)
+        if spec.time_fields and not spec.reminders and remind_before_minutes is None and _in_future(spec, data, ctx):
+            # No automatic reminders and none asked for: save first, then offer one
+            # (the user asked for this). "1 saat önce hatırlat" next -> update_entry.
+            reply += " " + ctx.t("ask_reminder")
+        return ToolResult(reply)
 
     def list_entries(ctx: ToolContext, scope: str = "upcoming", query: str | None = None) -> str:
         rows = _rows(spec, ctx)
@@ -242,15 +297,24 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
         lines += [f"#{r['id']} · {_summary(spec, _data(r), ctx)}" for r in rows]
         return "\n".join(lines)
 
-    def update_entry(ctx: ToolContext, entry: str, time_ambiguous: bool = False, **values: Any) -> ToolResult:
+    def update_entry(
+        ctx: ToolContext,
+        entry: str,
+        time_ambiguous: bool = False,
+        remind_before_minutes: int | None = None,
+        **values: Any,
+    ) -> ToolResult:
         row = _find(spec, entry, ctx)
         if row is None:
             return ToolResult(ctx.t("not_found", entry=entry))
-        changes, error = _parse_values(spec, {k: v for k, v in values.items() if v is not None}, ctx, partial=True)
+        given = _keep_unchanged_part(spec, {k: v for k, v in values.items() if v is not None}, _data(row), ctx)
+        changes, error = _parse_values(spec, given, ctx, partial=True)
         if error:
             return ToolResult(error, final=False)
         if time_ambiguous and (question := _ambiguity_question(spec, changes, ctx)):
             return ToolResult(question)
+        if remind_before_minutes is not None:
+            changes[REMIND_KEY] = remind_before_minutes
         data = {**_data(row), **changes}
         ctx.db.execute(
             "UPDATE records SET data = ?, sort_at = ?, updated_at = ? WHERE id = ?",
@@ -270,7 +334,7 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
 
     definitions = [
         ("add_entry", f"Save a new {item}.", add_entry, add_model),
-        ("list_entries", f"Show {item} entries.", list_entries, list_model),
+        ("list_entries", f"Show {item} entries to the user. Not needed before update_entry or delete_entry.", list_entries, list_model),
         ("update_entry", f"Change fields of an existing {item}; send only the fields that change.", update_entry, update_model),
         ("delete_entry", f"Delete a {item}.", delete_entry, delete_model),
     ]
@@ -308,6 +372,30 @@ def _parse_values(spec: RecordsSpec, values: dict[str, Any], ctx: ToolContext, p
     return data, None
 
 
+def _keep_unchanged_part(spec: RecordsSpec, values: dict[str, Any], old: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """'Move it to the 9th' changes the day, not the time; '16:00 olsun' changes the time, not the day.
+
+    For a date-time field the model may send only a date or only a time; the other
+    half is taken from the stored value. (Live: asked to move a 15:00 meeting to
+    another day, the model sent '2026-11-09 00:00'. Code keeps the time now.)
+    """
+    today = ctx.now.date()
+    out = dict(values)
+    for f in spec.fields:
+        value, previous = out.get(f.name), old.get(f.name)
+        if f.type != "datetime" or value is None or not previous:
+            continue
+        before = datetime.fromisoformat(previous)
+        text = str(value).strip()
+        if parse_datetime(text, today) is not None:
+            continue  # a full date-time: use as is
+        if (day := resolve_day(text, today)) is not None:
+            out[f.name] = f"{day.isoformat()} {before:%H:%M}"
+        elif (at := parse_time(text)) is not None:
+            out[f.name] = f"{before.date().isoformat()} {at:%H:%M}"
+    return out
+
+
 def _ambiguity_question(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContext) -> str | None:
     """'2' -> 'öğleden sonra 14:00 mı, yoksa 02:00 mı?' Written by code, not the model (ADR-0011)."""
     for f in spec.fields:
@@ -334,11 +422,27 @@ def _sort_at(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContext) -> str |
     return None
 
 
+def _in_future(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContext) -> bool:
+    fields = [f for f in spec.time_fields if data.get(f.name)]
+    return any(_local(f, data[f.name], ctx) > ctx.now for f in fields)
+
+
+def _reminder_rules(spec: RecordsSpec, data: dict[str, Any]) -> list[ReminderSpec]:
+    """The ability's default rules, or the reminder the user asked for on this entry."""
+    asked = data.get(REMIND_KEY)
+    if asked is None:
+        return spec.reminders
+    # Prefer a clock time over a whole day for a reminder the user asked for.
+    times = sorted(spec.time_fields, key=lambda f: f.type != "datetime")
+    target = next((f for f in times if data.get(f.name)), None)
+    return [ReminderSpec(field=target.name, before_minutes=asked)] if target else []
+
+
 def _with_reminders(spec: RecordsSpec, record_id: int, data: dict[str, Any], ctx: ToolContext, text: str) -> str:
     fields = {f.name: f for f in spec.fields}
     weekdays = ctx.t("weekdays").split(",")
     notes = []
-    for r in spec.reminders:
+    for r in _reminder_rules(spec, data):
         if not data.get(r.field):
             continue
         due = _local(fields[r.field], data[r.field], ctx) - timedelta(minutes=r.before_minutes)

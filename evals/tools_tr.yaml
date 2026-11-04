@@ -8,6 +8,7 @@
 # Argument matching (see erranderpy/evals/scoring.py):
 #   - strings are compared after Turkish-aware lowercasing and trimming
 #   - "~text" means "contains text" (for free-form titles and names)
+#   - "re:pattern" means the whole string matches the regular expression
 #   - lists must have the same length; order does not matter
 #   - only the keys written here are checked; extra keys are allowed
 #   - expect: {calls: [{tool, args}, ...]} checks every tool call of the turn

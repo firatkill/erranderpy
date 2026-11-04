@@ -1,0 +1,27 @@
+cases:
+  # from real use: the request for a reminder ended up in the notes field and nothing was scheduled
+  - id: apt01
+    message: "11 kasım saat 15.00 için google meet toplantısı için hatırlatma ekler misin"
+    expect: {tool: add_entry, args: {title: "~meet", when: "~-11-11 15:00", remind_before_minutes: 60}}
+  - id: apt02
+    message: "1 saat önce hatırlat"
+    history:
+      - [user, "8 kasım 15:00 google meet toplantısı"]
+      - [assistant, "📅 Kaydettim (#2): Google Meet toplantısı · 08.11 Pazar 15:00. ⏰ Hatırlatma ister misin? Örneğin \"1 saat önce hatırlat\" yazman yeterli."]
+    expect:
+      any:
+        - {tool: update_entry, args: {entry: "~2", remind_before_minutes: 60}}
+        - {tool: update_entry, args: {entry: "~meet", remind_before_minutes: 60}}
+  - id: apt03
+    message: "yarın 10:00'da dişçi"
+    expect: {tool: add_entry, args: {title: "~dişçi", when: "~10:00", remind_before_minutes: null}}
+  # from a replay of real use: the model listed first, and listing ended the turn
+  - id: apt04
+    message: "11 kasımdaki toplantıyı 9 kasıma al"
+    history:
+      - [user, "11 kasım 15:00 google meet toplantısı"]
+      - [assistant, "📅 Kaydettim (#1): Google Meet toplantısı · 11.11 Çarşamba 15:00."]
+      - [user, "8 kasım 16:00 dişçi"]
+      - [assistant, "📅 Kaydettim (#2): Dişçi · 08.11 Pazar 16:00."]
+    # only the new date (the code keeps 15:00), or the full date-time; never 00:00
+    expect: {tool: update_entry, args: {when: 're:\d{4}-11-09( 15:00)?'}}

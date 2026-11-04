@@ -7,6 +7,7 @@ comparison after light normalization. See docs/decisions/0003-llm-karar-verir-ko
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from typing import Any
 
@@ -42,6 +43,8 @@ def match(expected: Any, actual: Any) -> bool:
     if isinstance(expected, str):
         if not isinstance(actual, str):
             return False
+        if expected.startswith("re:"):
+            return re.fullmatch(expected[3:], actual.strip()) is not None
         if expected.startswith("~"):
             return normalize(expected[1:]) in normalize(actual)
         return normalize(expected) == normalize(actual)

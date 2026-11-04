@@ -3,8 +3,8 @@ name: tasks
 # The router reads `description` and `examples`. Never copy sentences from
 # evals.yaml or evals/router_tr.yaml into `examples`.
 description: >-
-  Manages daily tasks and habits: one-off to-dos for a day (whole days only: no clock times, no
-  reminders), recurring daily habits
+  Manages daily tasks and habits: one-off to-dos for a day (whole days, no clock times; they show up
+  in that day's list and evening summary, so "remind me on Thursday to X" fits here), recurring daily habits
   (with or without a time target, e.g. "I should practise X"), logging time spent on a habit,
   finishing tasks, and showing what is left for a day.
 examples:

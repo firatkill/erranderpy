@@ -26,3 +26,13 @@ cases:
   - id: shop08
     message: "3 tane avokado lazım"
     expect: {tool: add_items, args: {items: [{name: avokado, quantity: 3}]}}
+  # from real use (Telegram, 2026-11-04): there was no tool for this; the model listed instead
+  - id: shop09
+    message: "Listedekilerin tümünü temizle."
+    expect: {tool: clear_list, args: {}}
+  - id: shop10
+    message: "geri al"
+    history:
+      - [user, "listeyi boşalt"]
+      - [assistant, "🧹 Listeyi temizledim (5 ürün: ekmek, cips, kola, domates, yoğurt). Yanlışlıkla olduysa \"geri al\" yaz."]
+    expect: {tool: undo_clear, args: {}}
