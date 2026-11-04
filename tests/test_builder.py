@@ -217,4 +217,5 @@ def test_single_route_keeps_the_users_own_words(tmp_path):
 
     result = route_answer(("calendar", "Takvimdeki toplantıyı güncelle: saati 14.00 olsun"))
     original = "Günceller misin, saat 14.00 oldu."
-    assert parse_routes(result, ["calendar"], original) == [Route("calendar", original)]
+    routes = parse_routes(result, ["calendar"], original)
+    assert [(r.agent, r.text) for r in routes] == [("calendar", original)]

@@ -31,6 +31,10 @@ class Routable(Protocol):
 class Route:
     agent: str
     text: str
+    # The separate requests the router found for this agent. Several requests for
+    # one agent travel as one route (one agent run), but the agent is told how many
+    # there are, and the runtime checks none was dropped.
+    requests: tuple[str, ...] = ()
 
 
 def build_router_prompt(agents: Sequence[Routable]) -> str:
@@ -93,12 +97,12 @@ def parse_routes(result: LLMResult, valid_names: Sequence[str], original_text: s
         agent = agent if agent in valid_names else UNKNOWN
         text = str(item.get("text") or "").strip() or original_text
         texts_by_agent.setdefault(agent, []).append(text)
-    routes = [Route(agent, ", ".join(texts)) for agent, texts in texts_by_agent.items()]
+    routes = [Route(agent, ", ".join(texts), tuple(texts)) for agent, texts in texts_by_agent.items()]
     if len(routes) == 1:
         # One agent handles the whole message: pass the user's exact words, not the
         # model's paraphrase. Rewrites can hide what the user actually said (a live
         # test turned "saat 2" into "14:00"); the agent sees the history anyway.
-        routes = [Route(routes[0].agent, original_text)]
+        routes = [Route(routes[0].agent, original_text, routes[0].requests)]
     return routes or None
 
 

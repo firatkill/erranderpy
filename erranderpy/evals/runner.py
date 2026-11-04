@@ -21,7 +21,7 @@ import pydantic
 from erranderpy.core.llm import LLMError, LLMProvider, LLMResult, Message, ToolCall
 from erranderpy.core.registry import AGENTS_DIR, load_agents
 from erranderpy.core.router import build_router_prompt, parse_routes, route_tool
-from erranderpy.core.runtime import build_agent_prompt
+from erranderpy.core.runtime import build_agent_prompt, requests_note
 from erranderpy.evals.fixtures import PROTOTYPES
 from erranderpy.evals.scoring import match, same_agents
 
@@ -116,6 +116,7 @@ def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
     agent = eval_agents()[case["agent"]]
     # Exactly the prompt the bot uses; the builder also sees the agents that exist.
     system = build_agent_prompt(agent, datetime.now(), list(routing_agents().values()))
+    system += requests_note(case.get("requests") or [])  # as the router would split it
     messages = [*_history(case), Message.user(case["message"])]
     try:
         llm = provider.complete(system, messages, tools=agent.tool_specs)

@@ -25,3 +25,17 @@ cases:
       - [assistant, "📅 Kaydettim (#2): Dişçi · 08.11 Pazar 16:00."]
     # only the new date (the code keeps 15:00), or the full date-time; never 00:00
     expect: {tool: update_entry, args: {when: 're:\d{4}-11-09( 15:00)?'}}
+  # from real use (Telegram, 2026-11-04 20:57): two requests for this agent in one message;
+  # only the first was done and the second was silently dropped
+  - id: apt05
+    message: "14 kasım saat 14.00 için bir toplantım var. takvime ekle. ayrıca 8 kasımdaki toplantı için bir hatırlatma kurar mısın"
+    requests:  # how the router splits it (5/5 in a check)
+      - "14 kasım saat 14.00 için bir toplantım var. takvime ekle."
+      - "8 kasımdaki toplantı için bir hatırlatma kurar mısın"
+    history:
+      - [user, "8 kasım 15:00 google meet toplantısı"]
+      - [assistant, "📅 Kaydettim (#2): Google Meet toplantısı · 08.11 Pazar 15:00. ⏰ Hatırlatma ister misin? Örneğin \"1 saat önce hatırlat\" yazman yeterli."]
+    expect:
+      calls:
+        - {tool: add_entry, args: {when: "~-11-14 14:00"}}
+        - {tool: update_entry, args: {remind_before_minutes: 60}}

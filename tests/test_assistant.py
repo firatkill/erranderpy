@@ -115,7 +115,10 @@ def test_routes_for_the_same_agent_are_merged():
     from erranderpy.core.router import Route, parse_routes
 
     result = route_answer(("shopping", "2 paket makarna"), ("unknown", "selam"), ("shopping", "süt"))
-    assert parse_routes(result, ["shopping"], "x") == [Route("shopping", "2 paket makarna, süt"), Route("unknown", "selam")]
+    assert parse_routes(result, ["shopping"], "x") == [
+        Route("shopping", "2 paket makarna, süt", ("2 paket makarna", "süt")),
+        Route("unknown", "selam", ("selam",)),
+    ]
 
 
 def test_scheduled_job_runs_under_the_assistant_and_lands_in_history():
@@ -137,3 +140,54 @@ def test_scheduled_job_runs_under_the_assistant_and_lands_in_history():
     assert db.recent_messages(CHAT, 1)[0]["text"] == text
     trace_id = db.recent_messages(CHAT, 1)[0]["trace_id"]
     assert [s["step"] for s in load_trace(db, trace_id)] == ["job.run"]
+
+
+def test_a_dropped_request_gets_one_nudge():
+    # Live, 2026-11-04 20:57: "add the 14th. also a reminder for the 8th" did only the first.
+    from erranderpy.core.tracing import load_trace
+
+    assistant, llm, db = make(
+        [
+            route_answer(("shopping", "süt al"), ("shopping", "ekmeği aldım")),
+            tool_answer(("add_items", {"items": [{"name": "süt"}]})),
+            tool_answer(("add_items", {"items": [{"name": "ekmek"}]})),
+        ]
+    )
+    reply = assistant.handle(USER, CHAT, "süt al. ekmeği de ekle")
+    assert reply.count("🛒 Ekledim") == 2
+    assert "2 requests for you" in llm.calls[1]["system"]
+    assert "[system check] You made 1 tool call(s) for 2 requests" in llm.calls[2]["messages"][-1].text
+    steps = [s["step"] for s in load_trace(db, db.recent_messages(CHAT, 1)[0]["trace_id"])]
+    assert "agent.nudge" in steps
+
+
+def test_nudge_answered_with_done_keeps_the_first_reply():
+    assistant, llm, _ = make(
+        [
+            route_answer(("shopping", "2 paket makarna"), ("shopping", "süt")),
+            tool_answer(("add_items", {"items": [{"name": "makarna", "quantity": 2}, {"name": "süt"}]})),
+            text_answer("DONE"),
+        ]
+    )
+    assert assistant.handle(USER, CHAT, "2 paket makarna, bir de süt") == "🛒 Ekledim: 2 × makarna, süt. Listede 2 ürün var."
+    assert len(llm.calls) == 3  # one extra call only because 1 call < 2 requests
+
+
+def test_no_nudge_when_calls_match_requests():
+    assistant, llm, _ = make([route_answer(("shopping", "süt al")), tool_answer(("add_items", {"items": [{"name": "süt"}]}))])
+    assistant.handle(USER, CHAT, "süt al")
+    assert len(llm.calls) == 2
+
+
+def test_a_repeated_call_after_the_nudge_is_not_run_twice():
+    assistant, _, db = make(
+        [
+            route_answer(("shopping", "zeytinyağı al"), ("shopping", "2 paket makarna")),
+            tool_answer(("add_items", {"items": [{"name": "zeytinyağı"}, {"name": "makarna", "quantity": 2}]})),
+            tool_answer(("add_items", {"items": [{"name": "zeytinyağı"}, {"name": "makarna", "quantity": 2}]})),
+            text_answer("DONE"),
+        ]
+    )
+    reply = assistant.handle(USER, CHAT, "zeytinyağı al, bir de 2 paket makarna")
+    assert reply == "🛒 Ekledim: zeytinyağı, 2 × makarna. Listede 2 ürün var."
+    assert db.one("SELECT COUNT(*) AS n FROM traces WHERE step = 'tool.call'")["n"] == 1

@@ -106,7 +106,7 @@ class Assistant:
         if agent is None or r.agent == UNKNOWN:
             return self._fallback(r.text, history, tracer)
         ctx = self._context(agent, user_id, chat_id, tracer, r.text)
-        reply = run_agent(self.llm, agent, r.text, ctx, history)
+        reply = run_agent(self.llm, agent, r.text, ctx, history, r.requests)
 
         # Effects a tool asked for (the builder after creating an agent):
         if ctx.effects.get("reload_agents"):
