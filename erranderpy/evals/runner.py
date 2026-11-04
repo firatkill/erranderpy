@@ -8,7 +8,7 @@ The evals use the *same* code the bot uses: the router prompt from
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import cache
 from pathlib import Path
@@ -16,7 +16,9 @@ from typing import Any
 
 import yaml
 
-from erranderpy.core.llm import LLMError, LLMProvider, LLMResult, Message
+import pydantic
+
+from erranderpy.core.llm import LLMError, LLMProvider, LLMResult, Message, ToolCall
 from erranderpy.core.registry import AGENTS_DIR, load_agents
 from erranderpy.core.router import build_router_prompt, parse_routes, route_tool
 from erranderpy.core.runtime import build_agent_prompt
@@ -122,8 +124,28 @@ def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
         return result
     _record_usage(result, llm)
 
-    result.passed, result.actual, result.error = check_tool_expectation(case["expect"], llm)
+    result.passed, result.actual, result.error = check_tool_expectation(case["expect"], _with_defaults(agent, llm))
     return result
+
+
+def _with_defaults(agent: Any, llm: LLMResult) -> LLMResult:
+    """Compare what the tool actually receives: the model's arguments with the
+    tool's defaults filled in. `list_tasks()` and `list_tasks(day="today")` are the
+    same call; an eval must not fail one of them."""
+    tools = getattr(agent, "tools", None)
+    if not tools:
+        return llm  # prototypes have no code, so no defaults to fill in
+    calls = []
+    for call in llm.tool_calls:
+        tool = tools.get(call.name)
+        args = call.arguments
+        if tool is not None:
+            try:
+                args = tool.args_model.model_validate(args).model_dump(mode="json")
+            except pydantic.ValidationError:
+                pass  # invalid arguments are compared as sent (and will fail)
+        calls.append(ToolCall(call.id, call.name, args))
+    return replace(llm, message=replace(llm.message, tool_calls=calls))
 
 
 def check_tool_expectation(expect: dict[str, Any], llm: LLMResult) -> tuple[bool, Any, str | None]:

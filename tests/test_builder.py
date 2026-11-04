@@ -49,7 +49,7 @@ def test_full_flow_creates_agent_and_handles_the_original_request(tmp_path):
     preview = assistant.handle(USER, CHAT, "11 kasımda 14:00'te avm'ye gitmem gerek")
     assert preview.startswith("🧩 Yeni yetenek önerisi: 📅 Takvim")
     assert "başlık (metin, zorunlu) · zaman (tarih-saat, zorunlu)" in preview
-    assert "⏰ zaman zamanından 60 dk önce hatırlatma" in preview
+    assert "⏰ zaman gelmeden 1 saat önce hatırlatma" in preview
     assert not (tmp_path / "calendar").exists()
 
     reply = assistant.handle(USER, CHAT, "evet")
@@ -149,3 +149,72 @@ def test_capabilities_mention_scheduled_jobs(tmp_path):
 def test_built_in_agents_never_include_user_ones(folder):
     # the repo's agents/ folder must not contain agents the bot created
     assert all(a.created_by != "builder" for a in load_agents(AGENTS_DIR).values())
+
+
+NO_REMINDERS = {**DRAFT, "reminders": []}
+
+
+def test_clock_fields_get_a_default_reminder_unless_refused(tmp_path):
+    assistant, _, _ = make(
+        tmp_path,
+        [
+            route_answer(("builder", "takvim")),
+            tool_answer(("propose_agent", {"draft": NO_REMINDERS})),
+            route_answer(("builder", "hatırlatma istemem")),
+            tool_answer(("propose_agent", {"draft": NO_REMINDERS, "without_reminders": True})),
+        ],
+    )
+    assert "⏰ zaman gelmeden 1 saat önce hatırlatma" in assistant.handle(USER, CHAT, "takvim")
+    assert "⏰" not in assistant.handle(USER, CHAT, "hatırlatma istemem")
+
+
+def test_reproposing_the_same_draft_is_turned_into_a_hint(tmp_path):
+    # Live, 2026-11-04: the user said "Ekle" and the model proposed the same thing again.
+    assistant, llm, _ = make(
+        tmp_path,
+        [
+            route_answer(("builder", "takvim")),
+            tool_answer(("propose_agent", {"draft": DRAFT})),
+            route_answer(("builder", "Ekle")),
+            tool_answer(("propose_agent", {"draft": {**DRAFT, "description": "Slightly different wording here."}})),
+            tool_answer(("create_agent", {})),
+        ],
+    )
+    assistant.handle(USER, CHAT, "takvim")
+    assert assistant.handle(USER, CHAT, "Ekle").startswith("✅ 📅 Takvim eklendi!")
+    assert "identical to the proposal" in llm.calls[4]["messages"][-1].text
+
+
+def test_updating_an_ability_keeps_entries_and_adds_reminders_to_them(tmp_path):
+    assistant, _, db = make(
+        tmp_path,
+        [
+            route_answer(("builder", "takvim")),
+            tool_answer(("propose_agent", {"draft": NO_REMINDERS, "without_reminders": True})),
+            route_answer(("builder", "evet")),
+            tool_answer(("create_agent", {})),
+            route_answer(("calendar", "toplantı")),
+            tool_answer(("add_entry", {"title": "Toplantı", "when": "2099-11-05 14:00"})),
+            route_answer(("builder", "takvime 1 saat önce hatırlatma ekle")),
+            tool_answer(("propose_agent", {"draft": DRAFT})),
+            route_answer(("builder", "evet")),
+            tool_answer(("create_agent", {})),
+        ],
+    )
+    assistant.handle(USER, CHAT, "takvim")
+    assistant.handle(USER, CHAT, "evet")
+    assert "hatırlatacağım" not in assistant.handle(USER, CHAT, "toplantı")
+    preview = assistant.handle(USER, CHAT, "takvime 1 saat önce hatırlatma ekle")
+    assert preview.startswith("🧩 Güncelleme önerisi: 📅 Takvim")
+    assert assistant.handle(USER, CHAT, "evet") == "✅ 📅 Takvim güncellendi. Bekleyen hatırlatma sayısı: 1."
+    assert assistant.agents["calendar"].reminder_hint  # reloaded with the new rule
+    assert db.one("SELECT COUNT(*) AS n FROM records")["n"] == 1  # the entry is still there
+    assert any(p.name.endswith("before-update") for p in (tmp_path / "_deleted").iterdir())
+
+
+def test_single_route_keeps_the_users_own_words(tmp_path):
+    from erranderpy.core.router import Route, parse_routes
+
+    result = route_answer(("calendar", "Takvimdeki toplantıyı güncelle: saati 14.00 olsun"))
+    original = "Günceller misin, saat 14.00 oldu."
+    assert parse_routes(result, ["calendar"], original) == [Route("calendar", original)]

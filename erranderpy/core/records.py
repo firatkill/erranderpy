@@ -315,7 +315,8 @@ def _ambiguity_question(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContex
             moment = datetime.fromisoformat(data[f.name])
             hour = moment.hour % 12 or 12
             am, pm = moment.replace(hour=hour % 12), moment.replace(hour=hour % 12 + 12)
-            return ctx.t("ambiguous_time", hour=hour, am=f"{am:%H:%M}", pm=f"{pm:%H:%M}")
+            said = f"{hour}.{moment.minute:02d}" if moment.minute else str(hour)  # "1.30", "2"
+            return ctx.t("ambiguous_time", hour=said, am=f"{am:%H:%M}", pm=f"{pm:%H:%M}")
     return None
 
 
@@ -347,7 +348,33 @@ def _with_reminders(spec: RecordsSpec, record_id: int, data: dict[str, Any], ctx
             ctx.db, ctx.user_id, spec.name, due, ctx.t("reminder", summary=_summary(spec, data, ctx)), record_id
         )
         notes.append(ctx.t("remind_at", at=format_datetime(due.replace(tzinfo=None), weekdays)))
-    return " ".join([text, *notes])
+    return " ".join(p for p in [text, *notes] if p)
+
+
+def resync_reminders(spec: RecordsSpec, ctx: ToolContext) -> int:
+    """Re-create reminders for every entry of an agent (after its reminder rules changed).
+
+    Pending reminders are cancelled and rebuilt; past moments get none. Returns how
+    many reminders are pending afterwards.
+    """
+    for row in _rows(spec, ctx):
+        reminders.cancel_for_record(ctx.db, spec.name, row["id"])
+        _with_reminders(spec, row["id"], _data(row), ctx, "")
+    row = ctx.db.one(
+        "SELECT COUNT(*) AS n FROM reminders WHERE agent = ? AND user_id = ? AND status = 'pending'",
+        (spec.name, ctx.user_id),
+    )
+    return row["n"]
+
+
+def format_minutes(minutes: int, units: tuple[str, str, str]) -> str:
+    """60 -> '1 saat', 1440 -> '1 gün', 45 -> '45 dk' (units: minute, hour, day)."""
+    minute, hour, day = units
+    if minutes and minutes % 1440 == 0:
+        return f"{minutes // 1440} {day}"
+    if minutes and minutes % 60 == 0:
+        return f"{minutes // 60} {hour}"
+    return f"{minutes} {minute}"
 
 
 def _rows(spec: RecordsSpec, ctx: ToolContext) -> list:
@@ -384,7 +411,7 @@ def _summary(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContext) -> str:
         elif f.type == "number":
             parts.append(f"{value:g}" if isinstance(value, float) else str(value))
         else:
-            parts.append(str(value))
+            parts.append(str(value).strip().rstrip(".!"))  # templates add their own punctuation
     return " · ".join(parts)
 
 

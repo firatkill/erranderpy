@@ -94,6 +94,11 @@ def parse_routes(result: LLMResult, valid_names: Sequence[str], original_text: s
         text = str(item.get("text") or "").strip() or original_text
         texts_by_agent.setdefault(agent, []).append(text)
     routes = [Route(agent, ", ".join(texts)) for agent, texts in texts_by_agent.items()]
+    if len(routes) == 1:
+        # One agent handles the whole message: pass the user's exact words, not the
+        # model's paraphrase. Rewrites can hide what the user actually said (a live
+        # test turned "saat 2" into "14:00"); the agent sees the history anyway.
+        routes = [Route(routes[0].agent, original_text)]
     return routes or None
 
 

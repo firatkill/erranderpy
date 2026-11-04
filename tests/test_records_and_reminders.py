@@ -146,3 +146,11 @@ def test_ambiguous_time_is_asked_by_code_and_nothing_is_saved():
     assert result.final and result.text == "🕑 Saat 2 derken öğleden sonra 14:00 mi, yoksa 02:00 mi?"
     assert cal.db.one("SELECT COUNT(*) AS n FROM records")["n"] == 0
     assert "time_ambiguous" in cal.agent.tools["add_entry"].spec.parameters["properties"]
+
+
+def test_summary_punctuation_and_ambiguity_label_with_minutes():
+    cal = Calendar()
+    reply = cal("add_entry", title="Toplantı", when="2026-11-05 14:00", place="Google Meet üzerinden.").text
+    assert "Google Meet üzerinden." in reply and ".." not in reply
+    question = cal("add_entry", title="x", when="2026-11-05 01:30", time_ambiguous=True).text
+    assert question == "🕑 Saat 1.30 derken öğleden sonra 13:30 mi, yoksa 01:30 mi?"

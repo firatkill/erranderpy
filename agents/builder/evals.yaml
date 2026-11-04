@@ -34,3 +34,19 @@ cases:
       - [user, "harcamalarımı tutmanı istiyorum"]
       - [assistant, "🧩 Yeni yetenek önerisi: 💸 Harcamalar\n…\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
     expect: {tool: cancel_proposal, args: {}}
+  # from real use (Telegram, 2026-11-04): a one-word yes after a proposal
+  - id: build06
+    message: "Ekle"
+    history:
+      - [user, "5 kasımda saat 1.30 da toplantım var"]
+      - [assistant, "🧩 Yeni yetenek önerisi: 📅 Takvim\nHer etkinlik için: etkinlik (metin, zorunlu) · tarih ve saat (tarih-saat, zorunlu) · notlar (metin)\n⏰ tarih ve saat gelmeden 1 saat önce hatırlatma\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
+    expect: {tool: create_agent, args: {}}
+  # changing an ability the bot created earlier: same name, full new draft
+  - id: build07
+    message: "takvime hatırlatma ekle, etkinlikten 1 saat önce"
+    history:
+      - [user, "takvimi ekleyebilirsin"]
+      - [assistant, "✅ 📅 Takvim eklendi! Bundan sonra doğrudan yazabilirsin, örneğin: \"cuma 10:30 toplantı\""]
+    expect:
+      tool: propose_agent
+      args: {draft: {name: calendar, reminders: [{before_minutes: 60}]}}

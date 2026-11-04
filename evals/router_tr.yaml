@@ -17,7 +17,14 @@ cases:
   - {id: r10, message: "bugün 30 dk ingilizce çalıştım", expect: [tasks]}
   - {id: r11, message: "yarın faturayı öde", expect: [tasks]}
   - {id: r12, message: "bugün ne kaldı?", expect: [tasks]}
-  - {id: r13, message: "faturayı ödedim", expect: [tasks]}
+  # r13 had no history at first and flip-flopped between tasks/shopping/unknown: alone, the
+  # sentence really is ambiguous. In real use the earlier turn is always there (2026-11-04).
+  - id: r13
+    message: "faturayı ödedim"
+    history:
+      - [user, "yarın faturayı öde"]
+      - [assistant, "📌 Ekledim: faturayı öde (yarın)."]
+    expect: [tasks]
   - {id: r14, message: "her sabah 10 dakika esneme yapmak istiyorum", expect: [tasks]}
   - {id: r15, message: "kitap okumaya 45 dakika ayırdım bugün", expect: [tasks]}
   - {id: r16, message: "perşembe kuaföre gitmeyi hatırlat", expect: [tasks]}
@@ -52,3 +59,10 @@ cases:
     expect: [builder]
   # still the old agents: a whole-day to-do is a task, not a new ability
   - {id: r36, message: "cumartesi arabayı yıkatmam lazım", expect: [tasks]}
+  # from real use (Telegram, 2026-11-04)
+  - id: r37
+    message: "Ekle"
+    history:
+      - [user, "5 kasımda saat 1.30 da toplantım var"]
+      - [assistant, "🧩 Yeni yetenek önerisi: 📅 Takvim\nHer etkinlik için: etkinlik (metin, zorunlu) · tarih ve saat (tarih-saat, zorunlu) · notlar (metin)\n\nEkleyeyim mi? Değiştirmek istediğin bir şey varsa söyle."]
+    expect: [builder]
