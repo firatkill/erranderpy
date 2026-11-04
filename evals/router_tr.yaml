@@ -38,3 +38,5 @@ cases:
   - {id: r28, message: "bugün hava nasıl olacak?", expect: [unknown]}
   - {id: r29, message: "hmm", expect: [unknown]}
   - {id: r30, message: "teşekkürler, harikasın", expect: [unknown]}
+  # --- from real use (each message the bot got wrong becomes a case) -------
+  - {id: r31, message: "Her gün 30dk ingilizce okuma yapmam lazım. Ayrıca diksiyon alıştırmaları yapmalıyım", expect: [tasks]}
