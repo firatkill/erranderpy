@@ -152,5 +152,8 @@ The reasoning behind each decision, in one or two lines. Code comments refer to 
   and a test; the copy loads and passes before any change.
 - **ADR-0021 Background service.** `make service`: launchd / systemd, restart on failure only; a
   start flag cleared on clean stop reveals crashes, and the bot says it restarted.
+- **ADR-0022 Note titles; code-agent hooks.** Every note has a short title; listings and replies show
+  titles, `show_note` shows the text. Code agents may define `live_context(ctx)` and `migrate(db)` in
+  `tools.py`. The router splits "X, sonra Y" into two requests even for one agent.
 
 New decisions get the next number and a line here.

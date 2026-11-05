@@ -3,7 +3,7 @@
 cases:
   - id: note01
     message: "not al: pazartesi muhasebeciye faturaları sormak"
-    expect: {tool: add_note, args: {text: "~muhasebeci"}}
+    expect: {tool: add_note, args: {text: "~muhasebeci", title: "re:.+"}}
   - id: note02
     message: "kitap fikri: geçmişe mektup yazan bir yaşlı adam"
     expect: {tool: add_note, args: {text: "~mektup", tags: {$has: [kitap]}}}
@@ -24,4 +24,34 @@ cases:
     expect: {tool: append_to_note, args: {note: 're:#?3', text: "~ölmüyor"}}
   - id: note08
     message: "muhasebeci notunu sil"
-    expect: {tool: delete_note, args: {note: "~muhasebeci"}}
+    entries:
+      - {title: "Muhasebeci", text: "pazartesi muhasebeciye faturaları sormak"}
+      - {title: "Mektup romanı", text: "geçmişe mektup yazan adam", tags: [kitap]}
+    expect: {tool: delete_notes, args: {notes: ['re:(#?1|.*(?i:muhasebe).*)']}}
+  # --- titles (live, 2026-11-05): headings become titles, content only on request ---
+  - id: note09
+    message: "şunu not al:\nTekerleme çalışması:\nŞu köşe yaz köşesi\nŞu köşe kış köşesi"
+    expect: {tool: add_note, args: {title: "~tekerleme", text: "~kış köşesi"}}
+  - id: note10
+    message: "diksiyon notunu göster"
+    entries:
+      - {title: "Diksiyon çalışması", text: "Lar\nLer\nLır"}
+      - {title: "Mektup romanı", text: "geçmişe mektup yazan adam"}
+    expect: {tool: show_note, args: {note: 're:(#?1|.*(?i:diksiyon).*)'}}
+  - id: note11
+    message: "notlarım neler"
+    entries:
+      - {title: "Diksiyon çalışması", text: "Lar\nLer\nLır"}
+    expect: {tool: find_notes, args: {tag: null, query: null}}
+  # The live failure: clear everything, then add a long note, in one message.
+  - id: note12
+    message: "notları tamamen temizle, sonra yeni bir not olarak şunu ekle:\n\nDiksiyon çalışması:\nLar\nLer\nLır\n\n1: Kırk kırık küp kırkınında kulbu kırık kırk kara küp."
+    entries:
+      - {title: "Gibi dizisi", text: "gibi dizisinin 4. bölümünü izledim", tags: [dizi]}
+    requests:
+      - "notları tamamen temizle"
+      - "yeni bir not olarak şunu ekle: Diksiyon çalışması: ..."
+    expect:
+      calls:
+        - {tool: delete_notes, args: {all_notes: true}}
+        - {tool: add_note, args: {title: "~diksiyon", text: "~kırk kırık küp"}}

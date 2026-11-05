@@ -4,7 +4,9 @@ Two kinds of agent folders:
 
     agents/<name>/                      kind: code (written by people)
       agent.yaml     name (= folder name), description, examples, system_prompt
-      tools.py       functions marked with @tool
+      tools.py       functions marked with @tool; optionally also
+                     live_context(ctx) -> str   data the model sees every turn
+                     migrate(db)                after schema.sql, e.g. a new column
       jobs.py        functions marked with @daily              (optional)
       schema.sql     CREATE TABLE IF NOT EXISTS ...            (optional)
       messages.yaml  reply templates per language              (optional)
@@ -68,6 +70,8 @@ def load_agents(dirs: Path | Iterable[Path] = AGENTS_DIR, db: Database | None = 
             schema = folder / "schema.sql"
             if db is not None and schema.exists():
                 db.apply_schema(schema.read_text(encoding="utf-8"))
+            if db is not None and agent.migrate is not None:
+                agent.migrate(db)
     return dict(sorted(agents.items(), key=lambda item: item[1].route_last))
 
 
@@ -89,7 +93,7 @@ def load_agent(folder: Path) -> Agent:
     for key in ("description", "system_prompt"):
         if not str(config.get(key) or "").strip():
             raise AgentLoadError(f"{folder}/agent.yaml: '{key}' is required")
-    tools = _load_tools(folder, name)
+    tools, module = _load_tools(folder, name)
     jobs = _load_jobs(folder, name)
     messages = _read_yaml(folder / "messages.yaml", required=False)
     return Agent(
@@ -104,7 +108,15 @@ def load_agent(folder: Path) -> Agent:
         title=str(config.get("title") or name),
         route_last=config.get("routing") == "last",
         context=[str(c) for c in config.get("context") or []],
+        live_context=_hook(module, "live_context"),
+        migrate=_hook(module, "migrate"),
     )
+
+
+def _hook(module, name: str):
+    """An optional plain function in tools.py (not a @tool), or None."""
+    value = getattr(module, name, None)
+    return value if callable(value) and get_tool(value) is None else None
 
 
 def _import(folder: Path, agent_name: str, filename: str):
@@ -126,7 +138,7 @@ def _import(folder: Path, agent_name: str, filename: str):
     return module, module_name
 
 
-def _load_tools(folder: Path, agent_name: str) -> dict[str, Tool]:
+def _load_tools(folder: Path, agent_name: str) -> tuple[dict[str, Tool], Any]:
     path = folder / "tools.py"
     if not path.exists():
         raise AgentLoadError(f"{folder}: tools.py is missing")
@@ -138,7 +150,7 @@ def _load_tools(folder: Path, agent_name: str) -> dict[str, Tool]:
             tools[found.name] = found
     if not tools:
         raise AgentLoadError(f"{path}: no functions marked with @tool")
-    return tools
+    return tools, module
 
 
 def _load_jobs(folder: Path, agent_name: str) -> list[Job]:

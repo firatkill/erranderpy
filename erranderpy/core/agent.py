@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from erranderpy.core.jobs import Job
 from erranderpy.core.llm import ToolSpec
@@ -34,6 +34,9 @@ class Agent:
     # Data the model needs to see on every turn, read fresh each time (a records
     # agent: its current entries with their #numbers). Appended to the prompt.
     live_context: Callable[[ToolContext], str] | None = None
+    # Runs once after schema.sql, for changes CREATE TABLE IF NOT EXISTS can't make
+    # on a table that already exists (a new column). Must be safe to run again.
+    migrate: Callable[[Any], None] | None = None
 
     @property
     def tool_specs(self) -> list[ToolSpec]:

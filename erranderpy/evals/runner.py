@@ -114,6 +114,12 @@ def run_router_case(provider: LLMProvider, case: dict[str, Any], agents: list[An
         return result
     result.actual = [r.agent for r in routes]
     result.passed = same_agents(case["expect"], result.actual)
+    if "requests" in case:
+        # How many separate requests the router found (the runtime's multi-request
+        # check runs only from 2). Several requests for one agent share one route.
+        found = sum(max(len(r.requests), 1) for r in routes)
+        result.actual = {"agents": result.actual, "requests": found}
+        result.passed = result.passed and found == case["requests"]
     return result
 
 
@@ -138,13 +144,18 @@ def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
 
 def _live_context(agent: Any, entries: list[dict[str, Any]]) -> str:
     """entries: [...] in a case = records that already exist. They are saved with the
-    agent's real add_entry tool into a throwaway database, and the prompt gets
-    exactly the context the bot would build from them."""
+    agent's real add tool (add_entry, or a code agent's own add_*) into a throwaway
+    database, and the prompt gets exactly the context the bot would build from them."""
     if getattr(agent, "live_context", None) is None:
         return ""
-    ctx = ToolContext(Database(":memory:"), 1, 1, datetime.now(EVAL_TZ), agent.messages_for("tr"))
+    db = Database(":memory:")
+    if agent.path is not None and (agent.path / "schema.sql").exists():
+        db.apply_schema((agent.path / "schema.sql").read_text(encoding="utf-8"))
+    ctx = ToolContext(db, 1, 1, datetime.now(EVAL_TZ), agent.messages_for("tr"))
+    add = agent.tools.get("add_entry") or next(t for name, t in agent.tools.items() if name.startswith("add_"))
     for entry in entries:
-        agent.tools["add_entry"].run(ctx, entry)
+        add.run(ctx, entry)
+    ctx.extras.clear()  # the case's turn starts after these were saved
     return agent.live_context(ctx)
 
 

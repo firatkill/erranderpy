@@ -1,5 +1,6 @@
 # Router eval: does the model send each request to the right agent?
-# `expect` is the list of agents, order does not matter.
+# `expect` is the list of agents, order does not matter. Optional `requests: N`: how many
+# separate requests the router must find (the multi-request check needs 2+).
 # Never copy these sentences into a prompt (see "Evals" in AGENTS.md).
 suite: router
 cases:
@@ -80,3 +81,5 @@ cases:
   - {id: r43, message: "yarın faturayı ödemeyi unutma", expect: [tasks]}
   - {id: r44, message: "deterjan bitmiş", expect: [shopping]}
   - {id: r45, message: "fikir: haftalık bütçe uygulaması yapmak. bir de süt al", expect: [notes, shopping]}
+  # Live (2026-11-05): two actions for one agent with a pasted note; must be 2 requests (checked in runtime).
+  - {id: r46, message: "notları tamamen temizle, sonra yeni bir not olarak şunu ekle:\n\nDiksiyon çalışması:\nLar\nLer\n\n1: Kırk kırık küp kırkınında kulbu kırık kırk kara küp.", expect: [notes], requests: 2}

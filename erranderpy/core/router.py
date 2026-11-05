@@ -41,6 +41,11 @@ def build_router_prompt(agents: Sequence[Routable]) -> str:
     lines = [
         "You are the router of a personal assistant. Users write short messages, usually in Turkish.",
         "A message may contain several requests. Split it and send each request to exactly one agent.",
+        # Live (2026-11-05): "notları tamamen temizle, sonra yeni bir not olarak şunu ekle: <long text>"
+        # came back as one request, so the agent was never checked for the second one.
+        "Actions joined by 'sonra', 'ayrıca', 'bir de', 'and then' are separate requests even when the same agent "
+        "handles them ('notları sil, sonra şunu ekle' is 2 requests for notes). Text the user pastes as the content "
+        "of a request (a long note, a list) stays inside that request; never split it.",
         "Earlier messages are only context; route only the latest user message.",
         "",
         "Agents:",

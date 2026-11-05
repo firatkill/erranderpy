@@ -21,6 +21,8 @@ There are two kinds:
 agents/<name>/
   agent.yaml     name (= folder name), description, examples, system_prompt   required
   tools.py       functions marked with @tool                                 required
+                 + live_context(ctx) -> str: data the model sees every turn  optional
+                 + migrate(db): after schema.sql, e.g. add a column          optional
   jobs.py        functions marked with @daily (run at a time of day)         optional
   schema.sql     CREATE TABLE IF NOT EXISTS ... for this agent's data        optional
   messages.yaml  reply templates per language (tr, en)                       optional

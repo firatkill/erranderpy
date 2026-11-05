@@ -12,13 +12,16 @@ class ScriptedProvider(LLMProvider):
     model = "fake-1"
 
     def __init__(self):
-        self.answers = {c["message"]: c["expect"] for c in load_cases("router")}
+        self.answers = {c["message"]: c for c in load_cases("router")}
 
     def complete(self, system, messages, tools=None, tool_choice="auto", max_tokens=2048):
         text = messages[-1].text
         if text == "hmm":
             raise LLMError("timeout", "simulated", self.name)
-        routes = [{"agent": a, "text": text} for a in self.answers[text]]
+        case = self.answers[text]
+        routes = [{"agent": a, "text": text} for a in case["expect"]]
+        # `requests: N` cases: N requests, the extra ones for the first agent.
+        routes += [{"agent": case["expect"][0], "text": text}] * (case.get("requests", len(routes)) - len(routes))
         if text == "selam":
             routes = [{"agent": "shopping", "text": text}]  # a wrong decision
         call = ToolCall("c1", "route", {"routes": routes})

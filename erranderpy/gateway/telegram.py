@@ -208,6 +208,17 @@ async def typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
 
 
 async def send(msg, text: str) -> None:
-    if len(text) > TELEGRAM_MAX_CHARS:
-        text = text[: TELEGRAM_MAX_CHARS - 1] + "…"
-    await msg.reply_text(text)
+    # A long note (show_note) can pass Telegram's limit: send it in parts, not cut.
+    for part in split_message(text):
+        await msg.reply_text(part)
+
+
+def split_message(text: str, limit: int = TELEGRAM_MAX_CHARS) -> list[str]:
+    """Parts of at most `limit` chars, cut at a line break when there is one."""
+    parts = []
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit)
+        cut = cut if cut > limit // 2 else limit
+        parts.append(text[:cut].rstrip())
+        text = text[cut:].lstrip("\n")
+    return [*parts, text] if text else parts
