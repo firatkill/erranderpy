@@ -39,3 +39,15 @@ cases:
       calls:
         - {tool: add_entry, args: {when: "~-11-14 14:00"}}
         - {tool: update_entry, args: {remind_before_minutes: 60}}
+  # from real use (Telegram, 2026-11-05 03:55): the meeting was saved a day earlier and is no
+  # longer in the chat history. The agent didn't know it existed and saved a new entry at 00:00.
+  - id: apt06
+    message: "8 kasımdaki toplantı için 1 saat önce hatırlat"
+    entries:  # already saved (#1, #2, #3)
+      - {title: "Toplantı", when: "2026-11-05 14:00", notes: "Google Meet üzerinden"}
+      - {title: "Google Meet toplantısı", when: "2026-11-08 15:00"}
+      - {title: "Toplantı", when: "2026-11-14 14:00", remind_before_minutes: 180}
+    history:
+      - [user, "Her gün sayısal loto oynamalıyım"]
+      - [assistant, "🔁 Yeni alışkanlık: sayısal loto oynama."]
+    expect: {tool: update_entry, args: {entry: 're:#?2', remind_before_minutes: 60}}

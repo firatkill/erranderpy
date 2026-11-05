@@ -23,6 +23,7 @@ is code we wrote and tested. See docs/decisions/0012-bildirimsel-agentlar.md.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -152,6 +153,47 @@ def build_records_agent(spec: RecordsSpec, path: Path | None = None) -> Agent:
         title=spec.title,
         created_by=spec.created_by,
         reminder_hint=hint,
+        live_context=lambda ctx: _entries_context(spec, ctx),
+    )
+
+
+# How many entries the prompt shows. A personal list is short; past this the
+# model can still search with list_entries(query=...).
+CONTEXT_ENTRIES = 30
+
+
+def _entries_context(spec: RecordsSpec, ctx: ToolContext) -> str:
+    """The entries that exist right now, with their #numbers, for the prompt.
+
+    Without this the agent only knew entries still visible in the last few
+    chat messages. Live (2026-11-05): "8 kasımdaki toplantı için 1 saat önce
+    hatırlat", a day after saving it, became a *new* entry at 00:00. The prompt
+    forbids listing first (listing ends the turn), so the model must already
+    see what exists. Read fresh on every turn: after an update it is current.
+    """
+    rows = _rows(spec, ctx)
+    if spec.time_fields:
+        start = ctx.today_start_utc()
+        rows = [r for r in rows if r["sort_at"] is None or r["sort_at"] >= start]
+        heading = "upcoming entries"
+    else:
+        heading = "entries"
+    if not rows:
+        return f"\n\nThe user has no {heading} yet."
+    lines = []
+    for r in rows[:CONTEXT_ENTRIES]:
+        data = _data(r)
+        line = f"#{r['id']} · {_summary(spec, data, ctx)}"
+        if data.get(REMIND_KEY) is not None:
+            line += f" · reminder {data[REMIND_KEY]} min before"
+        lines.append(line)
+    if len(rows) > CONTEXT_ENTRIES:
+        lines.append(f"... and {len(rows) - CONTEXT_ENTRIES} more (find them with list_entries and a query)")
+    listing = "\n".join(lines)
+    return (
+        f"\n\nThe user's {heading} (to change or delete one, pass its #number as entry):\n{listing}\n"
+        "A request about one of these (\"8 kasımdaki toplantı\") is update_entry or delete_entry on it, "
+        "never a new entry. If several could match, ask which one."
     )
 
 
@@ -184,8 +226,8 @@ def _system_prompt(spec: RecordsSpec) -> str:
     lines += [
         "Tools: add_entry saves a new entry, list_entries shows them to the user, update_entry changes one, "
         "delete_entry removes one.",
-        "To change or delete an entry, call update_entry / delete_entry directly with its #number (shown when it "
-        "was saved or listed) or words from its title. Never call list_entries first: listing ends your turn.",
+        "To change or delete an entry, call update_entry / delete_entry directly with its #number (from the "
+        "entries at the end of this prompt). Never call list_entries first: listing ends your turn.",
         "When updating a date-time, send only what changes: just the date (YYYY-MM-DD) to move it to another day "
         "(the time is kept), just HH:MM to change the time (the day is kept).",
         f"Dates are {DATE_HELP}. Date-times are {DATETIME_HELP}.",
@@ -265,6 +307,14 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
         data, error = _parse_values(spec, values, ctx)
         if error:
             return ToolResult(error, final=False)  # the model fixes the value or asks the user
+        if (field := _unsaid_midnight(spec, data, ctx)) is not None:
+            # "8 kasım" with no clock time arrives as "2026-11-08 00:00". Don't save a
+            # time the user never gave (live, 2026-11-05: a new entry at 00:00).
+            return ToolResult(
+                f"The user gave no clock time for '{field}'. If the request is about an existing entry, "
+                "use update_entry with its #number. Otherwise ask the user what time, and call no tool.",
+                final=False,
+            )
         if time_ambiguous and (question := _ambiguity_question(spec, data, ctx)):
             return ToolResult(question)  # nothing saved; the answer comes as the next message
         if remind_before_minutes is not None:
@@ -372,6 +422,20 @@ def _parse_values(spec: RecordsSpec, values: dict[str, Any], ctx: ToolContext, p
     return data, None
 
 
+# Ways to actually say midnight; anything else that became 00:00 was a date without a time.
+_MIDNIGHT = re.compile(r"00[:.]00|24[:.]00|gece\s*yar[ıi]s|gece\s*12|midnight|12\s*am|saat\s*00?\b", re.IGNORECASE)
+
+
+def _unsaid_midnight(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContext) -> str | None:
+    """The name of a date-time field set to 00:00 although the request never says midnight."""
+    if not ctx.request_text or _MIDNIGHT.search(ctx.request_text):
+        return None
+    for f in spec.fields:
+        if f.type == "datetime" and data.get(f.name, "").endswith("T00:00"):
+            return f.name
+    return None
+
+
 def _keep_unchanged_part(spec: RecordsSpec, values: dict[str, Any], old: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """'Move it to the 9th' changes the day, not the time; '16:00 olsun' changes the time, not the day.
 
@@ -387,7 +451,9 @@ def _keep_unchanged_part(spec: RecordsSpec, values: dict[str, Any], old: dict[st
             continue
         before = datetime.fromisoformat(previous)
         text = str(value).strip()
-        if parse_datetime(text, today) is not None:
+        if (moment := parse_datetime(text, today)) is not None:
+            if moment.hour == moment.minute == 0 and ctx.request_text and not _MIDNIGHT.search(ctx.request_text):
+                out[f.name] = f"{moment.date().isoformat()} {before:%H:%M}"  # a date sent as "... 00:00"
             continue  # a full date-time: use as is
         if (day := resolve_day(text, today)) is not None:
             out[f.name] = f"{day.isoformat()} {before:%H:%M}"

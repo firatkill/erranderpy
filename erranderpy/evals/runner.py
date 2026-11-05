@@ -13,15 +13,18 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import yaml
 
 import pydantic
 
+from erranderpy.core.db import Database
 from erranderpy.core.llm import LLMError, LLMProvider, LLMResult, Message, ToolCall
 from erranderpy.core.registry import AGENTS_DIR, load_agents
 from erranderpy.core.router import build_router_prompt, parse_routes, route_tool
 from erranderpy.core.runtime import build_agent_prompt, requests_note
+from erranderpy.core.tools import ToolContext
 from erranderpy.evals.fixtures import PROTOTYPES
 from erranderpy.evals.scoring import match, same_agents
 
@@ -48,6 +51,7 @@ class CaseResult:
 
 
 FIXTURE_AGENTS_DIR = EVALS_DIR / "agents"
+EVAL_TZ = ZoneInfo("Europe/Istanbul")
 
 
 @cache
@@ -117,6 +121,7 @@ def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
     # Exactly the prompt the bot uses; the builder also sees the agents that exist.
     system = build_agent_prompt(agent, datetime.now(), list(routing_agents().values()))
     system += requests_note(case.get("requests") or [])  # as the router would split it
+    system += _live_context(agent, case.get("entries") or [])
     messages = [*_history(case), Message.user(case["message"])]
     try:
         llm = provider.complete(system, messages, tools=agent.tool_specs)
@@ -127,6 +132,18 @@ def run_tool_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
 
     result.passed, result.actual, result.error = check_tool_expectation(case["expect"], _with_defaults(agent, llm))
     return result
+
+
+def _live_context(agent: Any, entries: list[dict[str, Any]]) -> str:
+    """entries: [...] in a case = records that already exist. They are saved with the
+    agent's real add_entry tool into a throwaway database, and the prompt gets
+    exactly the context the bot would build from them."""
+    if getattr(agent, "live_context", None) is None:
+        return ""
+    ctx = ToolContext(Database(":memory:"), 1, 1, datetime.now(EVAL_TZ), agent.messages_for("tr"))
+    for entry in entries:
+        agent.tools["add_entry"].run(ctx, entry)
+    return agent.live_context(ctx)
 
 
 def _with_defaults(agent: Any, llm: LLMResult) -> LLMResult:

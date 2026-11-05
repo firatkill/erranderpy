@@ -35,9 +35,11 @@ class Calendar:
         self.agent = build_records_agent(RecordsSpec.model_validate(spec))
         self.now = NOW
 
-    def __call__(self, tool, **args):
-        ctx = ToolContext(self.db, 1, 1, self.now, self.agent.messages_for("tr"))
-        return self.agent.tools[tool].run(ctx, args)
+    def ctx(self, request_text=""):
+        return ToolContext(self.db, 1, 1, self.now, self.agent.messages_for("tr"), request_text=request_text)
+
+    def __call__(self, tool, _said="", **args):
+        return self.agent.tools[tool].run(self.ctx(_said), args)
 
     def pending(self):
         return [dict(r) for r in self.db.query("SELECT due_at, text FROM reminders WHERE status = 'pending'")]
@@ -194,3 +196,32 @@ def test_regex_matcher():
     assert match({"when": r"re:\d{4}-11-09( 15:00)?"}, {"when": "2026-11-09"})
     assert match({"when": r"re:\d{4}-11-09( 15:00)?"}, {"when": "2026-11-09 15:00"})
     assert not match({"when": r"re:\d{4}-11-09( 15:00)?"}, {"when": "2026-11-09 00:00"})
+
+
+def test_prompt_context_lists_upcoming_entries_with_numbers():
+    # Live, 2026-11-05: a day-old meeting was out of the chat history, so the agent
+    # added a new entry instead of updating it. Now it sees what exists.
+    cal = Calendar()
+    assert "no upcoming entries" in cal.agent.live_context(cal.ctx())
+    cal("add_entry", title="Eski", when="2026-11-01 10:00")  # past: not shown
+    cal("add_entry", title="Google Meet", when="2026-11-08 15:00", remind_before_minutes=90)
+    text = cal.agent.live_context(cal.ctx())
+    assert "#2 · Google Meet · 08.11 Pazar 15:00 · reminder 90 min before" in text
+    assert "Eski" not in text
+
+
+def test_a_date_without_a_time_is_not_saved_at_midnight():
+    cal = Calendar()
+    out = cal("add_entry", _said="8 kasımdaki toplantı için 1 saat önce hatırlat", title="Toplantı", when="2026-11-08 00:00")
+    assert not out.final and "no clock time" in out.text
+    assert cal.db.query("SELECT * FROM records") == []
+    # Midnight said out loud is fine.
+    out = cal("add_entry", _said="8 kasım gece yarısı yılbaşı partisi", title="Parti", when="2026-11-08 00:00")
+    assert out.final and "00:00" in out.text
+
+
+def test_update_with_midnight_that_was_not_said_keeps_the_time():
+    cal = Calendar()
+    cal("add_entry", title="Toplantı", when="2026-11-08 15:00")
+    out = cal("update_entry", _said="toplantıyı 9 kasıma al", entry="#1", when="2026-11-09 00:00")
+    assert "09.11 Pazartesi 15:00" in out.text

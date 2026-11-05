@@ -191,3 +191,26 @@ def test_a_repeated_call_after_the_nudge_is_not_run_twice():
     reply = assistant.handle(USER, CHAT, "zeytinyağı al, bir de 2 paket makarna")
     assert reply == "🛒 Ekledim: zeytinyağı, 2 × makarna. Listede 2 ürün var."
     assert db.one("SELECT COUNT(*) AS n FROM traces WHERE step = 'tool.call'")["n"] == 1
+
+
+def test_records_agent_sees_its_entries_in_the_prompt():
+    from erranderpy.core.records import RecordsSpec, build_records_agent
+
+    spec = {
+        "name": "calendar", "kind": "records", "title": "📅 Takvim", "item": "etkinlik",
+        "description": "Keeps events at a date and time.",
+        "fields": [{"name": "title", "type": "text", "required": True}, {"name": "when", "type": "datetime", "required": True}],
+    }
+    assistant, llm, _ = make(
+        [
+            route_answer(("calendar", "30 aralık 10:00 dişçi")),
+            tool_answer(("add_entry", {"title": "Dişçi", "when": "2099-12-30 10:00"})),
+            route_answer(("calendar", "dişçiyi 11'e al")),
+            tool_answer(("update_entry", {"entry": "#1", "when": "11:00"})),
+        ]
+    )
+    assistant.agents["calendar"] = build_records_agent(RecordsSpec.model_validate(spec))
+    assistant.handle(USER, CHAT, "30 aralık 10:00 dişçi")
+    assistant.handle(USER, CHAT, "dişçiyi 11'e al")
+    assert "no upcoming entries" in llm.calls[1]["system"]
+    assert "#1 · Dişçi · 30.12" in llm.calls[3]["system"]

@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 from erranderpy.core.jobs import Job
 from erranderpy.core.llm import ToolSpec
-from erranderpy.core.tools import Tool
+from erranderpy.core.tools import Tool, ToolContext
 
 DEFAULT_LANGUAGE = "en"
 
@@ -30,6 +31,9 @@ class Agent:
     route_last: bool = False  # listed last in the router prompt (the builder: "if nothing else fits")
     reminder_hint: str = ""  # one line for the capability list, e.g. "reminds 60 min before 'when'"
     context: list[str] = field(default_factory=list)  # extra prompt context, e.g. ["agents"]: list the other agents
+    # Data the model needs to see on every turn, read fresh each time (a records
+    # agent: its current entries with their #numbers). Appended to the prompt.
+    live_context: Callable[[ToolContext], str] | None = None
 
     @property
     def tool_specs(self) -> list[ToolSpec]:

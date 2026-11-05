@@ -72,6 +72,8 @@ def run_agent(
     assert ctx.tracer is not None
     messages = [*history, Message.user(text)]
     system = build_agent_prompt(agent, ctx.now, list(ctx.extras.get("agents", {}).values()))
+    if agent.live_context is not None:
+        system += agent.live_context(ctx)
     expected = len(requests)
     system += requests_note(requests)
 
