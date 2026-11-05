@@ -16,7 +16,7 @@ CORE_MESSAGES: dict[str, dict[str, str]] = {
         "not_paired": "Bu bot henüz eşleştirilmedi. Botu kuran kişi, terminalde görünen 6 haneli kodu buraya göndermeli.",
         "paired": "✅ Eşleşme tamam! Artık bana yazabilirsin.\n\nÖrnek: \"zeytinyağı almam lazım\"",
         "help": "Bana normal cümlelerle yaz, gerisini ben hallederim.\n\nŞunları yapabiliyorum:\n{agents}\n\n"
-        "Komutlar:\n/agents · yeteneklerim\n/status · aktif model ve bugünkü kullanım\n/trace · son mesajını nasıl işlediğim\n/oncall · sağlık raporu (hatalar ve teşhis)",
+        "Komutlar (\"/\" yazınca da listelenir):\n{commands}",
         "status": "🤖 {provider} / {model}\n📅 Bugün: {messages} mesaj, {calls} LLM çağrısı, {tokens} token, ${cost}",
         "no_trace": "Henüz işlenmiş bir mesajın yok.",
         "late_prefix": "(gecikmeli)",
@@ -33,7 +33,7 @@ CORE_MESSAGES: dict[str, dict[str, str]] = {
         "not_paired": "This bot isn't paired yet. Whoever set it up should send the 6-digit code shown in their terminal.",
         "paired": "✅ Paired! You can talk to me now.\n\nTry: \"I need olive oil\"",
         "help": "Just write to me in plain sentences.\n\nThis is what I can do:\n{agents}\n\n"
-        "Commands:\n/agents · what I can do\n/status · active model and today's usage\n/trace · how I handled your last message\n/oncall · health report (errors and diagnosis)",
+        "Commands (also listed when you type \"/\"):\n{commands}",
         "status": "🤖 {provider} / {model}\n📅 Today: {messages} messages, {calls} LLM calls, {tokens} tokens, ${cost}",
         "no_trace": "You don't have a handled message yet.",
         "late_prefix": "(late)",
@@ -42,6 +42,30 @@ CORE_MESSAGES: dict[str, dict[str, str]] = {
         "agent_by_bot": "added for you",
     },
 }
+
+
+# The bot's commands, in one place: /help lists them, and Telegram shows them as the
+# menu that pops up when you type "/" (registered with setMyCommands at start).
+COMMANDS: dict[str, list[tuple[str, str]]] = {
+    "tr": [
+        ("help", "Ne yapabildiğim, örnekler ve komutlar"),
+        ("agents", "Yeteneklerim (hazır ve senin için eklenenler)"),
+        ("status", "Aktif model ve bugünkü kullanım, maliyet"),
+        ("trace", "Son mesajını adım adım nasıl işlediğim"),
+        ("oncall", "Sağlık raporu: son 24 saatin hataları ve teşhisi"),
+    ],
+    "en": [
+        ("help", "What I can do, examples and commands"),
+        ("agents", "My abilities (built in and added for you)"),
+        ("status", "Active model, today's usage and cost"),
+        ("trace", "How I handled your last message, step by step"),
+        ("oncall", "Health report: errors in the last 24 hours, diagnosed"),
+    ],
+}
+
+
+def commands(language: str) -> list[tuple[str, str]]:
+    return COMMANDS.get(language, COMMANDS["en"])
 
 
 def t(language: str, key: str, **values: Any) -> str:

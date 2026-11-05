@@ -89,7 +89,7 @@ def test_semantic_signals_unknown_routes_doubt_and_repeats():
     assistant.handle(USER, CHAT, "8 kasıma toplantı koydun mu?")
     found = kinds(db)
     assert found["unknown_routes"].count == 2
-    assert 'after bot "Bilmiyorum."' in found["user_doubt"].examples[-1]
+    assert 'after user' in found["user_doubt"].examples[-1] and 'and bot "Bilmiyorum."' in found["user_doubt"].examples[-1]
     assert found["repeated_message"].count == 1
 
 

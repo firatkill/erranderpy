@@ -239,12 +239,21 @@ def _user_doubt(db: Database, since: str) -> list[Signal]:
     for r in rows:
         if not DOUBT.search(r["text"]):
             continue
-        before = db.one(
-            "SELECT text FROM messages WHERE chat_id = ? AND id < ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+        # The exchange before the doubt: what the user asked, what the bot did. With the
+        # bot's reply alone, on-call once read "🗑️ Sildim…" as a delete nobody asked for;
+        # the user had written "hepsini sil" right before it.
+        before = db.query(
+            "SELECT role, text, trace_id FROM messages WHERE chat_id = ? AND id < ? ORDER BY id DESC LIMIT 2",
             (r["chat_id"], r["id"]),
         )
-        previous = (before["text"] if before else "").replace("\n", " ")[:100]
-        hits.append(f"{r['trace_id']}: user \"{r['text'][:100]}\" after bot \"{previous}\"")
+        asked = next((b for b in before if b["role"] == "user"), None)
+        answered = next((b for b in before if b["role"] == "assistant"), None)
+        line = f"{r['trace_id']}: user \"{r['text'][:100]}\""
+        if asked is not None:
+            line += f" after user ({asked['trace_id']}) \"{_one_line(asked['text'], 100)}\""
+        if answered is not None:
+            line += f" and bot \"{_one_line(answered['text'], 100)}\""
+        hits.append(line)
     if not hits:
         return []
     return [Signal("user_doubt", WARNING, len(hits), "the user questioned or corrected the bot: maybe it did the wrong thing", hits[-MAX_EXAMPLES:])]
@@ -275,6 +284,10 @@ def redact(text: str) -> str:
     Provider errors quote part of the key ("Incorrect API key provided: sk-proj-…").
     """
     return _SECRET.sub("[redacted]", text or "")
+
+
+def _one_line(text: str, limit: int) -> str:
+    return " ".join(text.split())[:limit]
 
 
 def _percentile(sorted_values: list[float], q: float) -> float | None:

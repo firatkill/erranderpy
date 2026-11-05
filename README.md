@@ -44,7 +44,8 @@ you: /trace
 bot: 🔎 router.decide · 1.9s → shopping … tool.call add_items · 0.00s … 💰 $0.0001
 ```
 
-`/status` shows the active model and today's usage; `make doctor` checks the whole setup.
+Type `/` for the command menu: `/help`, `/agents`, `/status` (active model, today's usage), `/trace`, `/oncall`.
+`make doctor` checks the whole setup.
 
 ## On-call
 

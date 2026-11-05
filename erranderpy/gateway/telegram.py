@@ -40,7 +40,20 @@ def build_application(
     oncall: Oncall | None = None,
     oncall_report_at: str = "08:00",
 ) -> Application:
-    app = Application.builder().token(token).build()
+    async def register_commands(app: Application) -> None:
+        """Fill the menu Telegram shows when you type "/": command + description.
+
+        The default list is in BOT_LANGUAGE; people whose Telegram app is set to
+        another supported language see theirs. A failure here must not stop the bot.
+        """
+        try:
+            await app.bot.set_my_commands(messages.commands(language))
+            for code in messages.SUPPORTED_LANGUAGES:
+                await app.bot.set_my_commands(messages.commands(code), language_code=code)
+        except Exception:
+            log.warning("could not register the command menu with Telegram", exc_info=True)
+
+    app = Application.builder().token(token).post_init(register_commands).build()
 
     async def guard(update: Update) -> bool:
         """True if the sender is the owner. Handles pairing on the way."""

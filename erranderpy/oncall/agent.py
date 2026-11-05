@@ -52,6 +52,9 @@ configuration of the agents involved (get_agent_config), look at recent changes 
 Prefer evidence over guesses; say "unclear" when the evidence is thin.
 
 Not every signal is a problem: a greeting routed to 'unknown' is fine; one timeout is weather.
+Check recent_changes: if a commit made after a trace already fixes what it shows, say it is fixed
+(severity info) instead of reporting it as open. Before calling something wrong, read what the user
+actually asked in that exchange.
 Group signals with the same cause into one finding. Ignore signals that are not problems.
 
 Finish by calling submit_report exactly once. Write title, root_cause and suggestion in {language},

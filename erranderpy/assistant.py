@@ -205,7 +205,8 @@ class Assistant:
         agents = "\n".join(
             f"• {a.title or a.name}: {a.examples[0] if a.examples else a.description}" for a in self.agents.values()
         )
-        return self._t("help", agents=agents)
+        listing = "\n".join(f"/{name} · {about}" for name, about in messages.commands(self.language))
+        return self._t("help", agents=agents, commands=listing)
 
     def agents_text(self) -> str:
         lines = [self._t("agents_header")]
