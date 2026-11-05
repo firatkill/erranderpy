@@ -65,6 +65,12 @@ mac_install() {
 </plist>
 PLIST
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  # bootout returns before the old job is gone; bootstrapping too early fails
+  # (the reinstall left the bot stopped once). Wait up to ~10 s for it to go.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+    sleep 1
+  done
   launchctl bootstrap "gui/$(id -u)" "$PLIST"
   echo "✓ Installed: $PLIST"
   echo "  It starts when you log in and restarts after a crash. While the Mac sleeps, the bot sleeps too;"

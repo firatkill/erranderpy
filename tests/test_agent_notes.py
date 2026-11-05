@@ -87,7 +87,11 @@ def test_migrate_adds_titles_to_old_notes():
     db.execute("INSERT INTO notes_entries (user_id, text, created_at) VALUES (1, 'gibi dizisinin 4. bölümünü izledim', 'x')")
     load_agents(db=db)
     load_agents(db=db)  # safe to run again
-    assert db.one("SELECT title FROM notes_entries")["title"] == "gibi dizisinin 4. bölümünü izledim"
+    db.execute("INSERT INTO notes_entries (user_id, text, created_at, title) VALUES (1, 'Diksiyon çalışması: Lar Ler', 'x', '')")
+    load_agents(db=db)
+    rows = db.query("SELECT title, text FROM notes_entries ORDER BY id")
+    assert rows[0]["title"] == "gibi dizisinin 4. bölümünü izledim"
+    assert (rows[1]["title"], rows[1]["text"]) == ("Diksiyon çalışması", "Lar Ler")
 
 
 def test_listing_is_capped(call):

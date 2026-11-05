@@ -170,7 +170,11 @@ def migrate(db: Database) -> None:
     if "title" not in columns:
         db.execute(f"ALTER TABLE {TABLE} ADD COLUMN title TEXT NOT NULL DEFAULT ''")
     for row in db.query(f"SELECT id, text FROM {TABLE} WHERE title = ''"):
-        db.execute(f"UPDATE {TABLE} SET title = ? WHERE id = ?", (_clean_title("", row["text"]), row["id"]))
+        title = _clean_title("", row["text"])
+        text = row["text"]
+        if text.startswith(f"{title}:") and text[len(title) + 1 :].strip():
+            text = text[len(title) + 1 :].strip()  # the heading is now the title
+        db.execute(f"UPDATE {TABLE} SET title = ?, text = ? WHERE id = ?", (title, text, row["id"]))
 
 
 # --- helpers ------------------------------------------------------------------------
@@ -216,7 +220,12 @@ def _clean_title(title: str, text: str) -> str:
     """One line, no trailing ':'. Without a title from the model, the text's first line."""
     title = " ".join(title.split()).rstrip(":").strip()
     if not title:
-        title = (text.splitlines() or [""])[0].rstrip(":").strip() or "Not"
+        first = (text.splitlines() or [""])[0]
+        # "Diksiyon çalışması: Lar Ler ..." (a note saved before line breaks were kept):
+        # a short heading before the first ':' is the title.
+        head, colon, _ = first.partition(":")
+        first = head if colon and 0 < len(head.split()) <= 5 else first
+        title = first.rstrip(":").strip() or "Not"
     return title if len(title) <= TITLE_MAX else title[: TITLE_MAX - 1].rstrip() + "…"
 
 
