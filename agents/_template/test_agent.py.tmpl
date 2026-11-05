@@ -1,0 +1,25 @@
+"""Tests for the {{name}} agent (created by `make new-agent`). Free: no LLM calls."""
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from erranderpy.core.db import Database
+from erranderpy.core.registry import load_agents
+from erranderpy.core.tools import ToolContext
+
+
+@pytest.fixture
+def call():
+    db = Database(":memory:")
+    agent = load_agents(db=db)["{{name}}"]
+    ctx = ToolContext(db=db, user_id=1, chat_id=1, now=datetime.now(ZoneInfo("Europe/Istanbul")), messages=agent.messages_for("tr"))
+    return lambda tool, **args: agent.tools[tool].run(ctx, args).text
+
+
+def test_add_list_delete(call):
+    assert call("add_entry", text="ilk kayıt").startswith("✅ Kaydettim (#1)")
+    assert "#1 · ilk kayıt" in call("list_entries")
+    assert call("delete_entry", entry="#1") == "🗑️ Sildim: ilk kayıt"
+    assert call("list_entries") == "Henüz kayıt yok."

@@ -47,3 +47,8 @@ def test_eval_datasets_load_and_ids_are_unique():
         assert len(cases) >= minimum
         ids = [c["id"] for c in cases]
         assert len(ids) == len(set(ids))
+
+
+def test_has_accepts_a_single_item():
+    assert match({"$has": "kitap"}, ["kitap", "fikir"])
+    assert not match({"$has": "iş"}, ["kitap"])

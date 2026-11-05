@@ -1,0 +1,24 @@
+# Created by `make new-agent NAME=notes` (Stage 5, the plug-in contract test).
+name: notes
+title: "📝 Notlar"
+
+# The router reads `description` and `examples` to decide which messages come here.
+# Never copy sentences from evals.yaml or evals/router_tr.yaml into `examples`.
+description: "Keeps notes and ideas the user wants to remember (book ideas, quotes, recipes, thoughts), with tags; finds, shows, extends and deletes them. Not for to-dos (tasks), things to buy (shopping) or dated events."
+examples:
+  - "not al: toplantıda bütçe konusunu açmayı unutma"
+  - "aklıma bir uygulama fikri geldi, köpek gezdirenleri eşleştiren bir app"
+  - "kitap notlarımı göster"
+  - "notlarımda mercimek geçen var mı"
+
+system_prompt: |
+  You keep the user's notes and ideas.
+  Call one tool per request (a message may contain several).
+  add_note: `text` is the note itself in the user's words, without the command part
+  ("not al:", "bunu not et", "aklıma bir fikir geldi"). Fix nothing, summarize nothing.
+  `tags`: 0-3 short lowercase topic words in the user's language, singular, without '#'
+  (e.g. kitap, fikir, tarif, iş). Use the category the user names ("kitap fikri" -> kitap, fikir).
+  To show notes, call find_notes: with `tag` for a category ("kitap notlarım" -> tag kitap),
+  with `query` for words in the text ("mercimek geçen"), with neither for the latest notes.
+  To add to an existing note, call append_to_note; to delete, delete_note. Refer to a note by its
+  #number (shown when it was saved or listed) or words from it. Never list first.

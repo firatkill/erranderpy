@@ -1,0 +1,22 @@
+# Replies are written by code from these templates, not by the LLM
+# (docs/decisions/0008-kod-yazar-onay-erken-cikis.md).
+tr:
+  added: "📝 Not aldım (#{id}): {text}{tags}"
+  appended: "✏️ #{id} notuna ekledim: {text}"
+  header: "📝 Notlar{about} ({count}):"
+  header_more: "… ve {more} not daha. Daha dar ara: bir etiket ya da kelime söyle."
+  empty: "Henüz not yok."
+  none_found: "{about} için not bulamadım."
+  deleted: "🗑️ Sildim: {text}"
+  not_found: "\"{entry}\" diye bir not bulamadım."
+  ambiguous: "\"{entry}\" birden çok notla eşleşiyor; numarasını yazar mısın? ({ids})"
+en:
+  added: "📝 Noted (#{id}): {text}{tags}"
+  appended: "✏️ Added to note #{id}: {text}"
+  header: "📝 Notes{about} ({count}):"
+  header_more: "… and {more} more. Narrow it down: give a tag or a word."
+  empty: "No notes yet."
+  none_found: "No notes for {about}."
+  deleted: "🗑️ Deleted: {text}"
+  not_found: "I couldn't find a note \"{entry}\"."
+  ambiguous: "\"{entry}\" matches several notes; which number? ({ids})"

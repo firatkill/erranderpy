@@ -135,7 +135,7 @@ def list_items(ctx: ToolContext, only_pending: bool = True) -> str:
 
 ### Yeni agent ekleme adımları
 
-1. `agents/<isim>/` klasörünü kopyala (`agents/_template`)
+1. `make new-agent NAME=<isim>`: `agents/_template`'i kopyalar (çalışan bir iskelet) ve `tests/test_agent_<isim>.py` yazar
 2. `agent.yaml` doldur, `tools.py` yaz
 3. `evals.yaml`'a 5–10 örnek mesaj ekle
 4. `make test` (agent yükleniyor mu?) ve `make eval` (router ve tool kararları doğru mu?)
@@ -344,7 +344,8 @@ make service        # systemd servisi kur → arka planda, reboot sonrası da ç
 ```
 
 - Gereken tek şey `git` ve `curl` (neredeyse her Linux VPS'te var); Python'u uv indirir
-- Loglar: `journalctl -u <servis-adi> -f`
+- `make service` → `/etc/systemd/system/erranderpy.service` (sudo ister), `Restart=on-failure`
+- Loglar: `make logs` (`journalctl -u erranderpy -f`); durum: `make service-status`; kaldırma: `make service-uninstall`
 
 **Yol B — Docker Compose (Docker zaten kuruluysa):**
 
@@ -356,6 +357,7 @@ docker compose up -d
 
 - `data/` klasörü volume olarak bağlanır; konteyner silinse de veriler kalır
 - Eşleştirme kodu `docker compose logs` içinde görünür
+- Konteyner içinde root olarak çalışır: bağlanan `./data` kimin olursa olsun yazılabilsin (port açmadığı için risk düşük)
 
 **Her iki yolda da:**
 - Telegram polling kullandığı için bot **hiçbir port açmaz**; alan adı, HTTPS, nginx ayarı gerekmez
@@ -371,12 +373,19 @@ istenirse, bot `127.0.0.1:<port>`'ta dinler ve mevcut nginx'e bir `location` blo
 
 Her sürümden önce: temiz bir klasöre (veya temiz bir Docker konteynerine) klonla, sadece
 README'deki adımları izle. 5 dakikayı geçiyorsa veya README dışı bir şey gerekiyorsa hata sayılır.
-CI'da da otomatik koşar (GitHub Actions: klonla → sahte anahtarlarla `make doctor` → testler).
+CI'da da otomatik koşar (`.github/workflows/ci.yml`, her push'ta):
+temiz klon → uv'yi `start.sh` gibi kur → `uv sync` → testler → sahte anahtarlarla `doctor --offline` →
+`make new-agent` ile üretilen agent'ın testi → `systemd-analyze verify` → Docker imajı + içinde `doctor --offline`.
 
 ### Mac'te dikkat
 
-Mac uykuya geçince bot da durur. `make service` launchd ile kurar; Mac uyandığında bot kendiliğinden
-devam eder (polling kaçan mesajları da alır). Kesintisiz çalışma isteyen kullanıcı VPS'e geçer.
+Mac uykuya geçince bot da durur. `make service` launchd ile kurar (`~/Library/LaunchAgents`, oturum
+açılınca başlar, çökünce yeniden başlar, loglar `data/logs/bot.log`); Mac uyandığında bot kendiliğinden
+devam eder (polling kaçan mesajları da alır, Telegram 24 saat saklar). Kesintisiz çalışma isteyen kullanıcı VPS'e geçer.
+
+**Düzgün kapanmayan çalışma:** Bot her başlangıçta bir bayrak yazar, temiz kapanışta siler. Bayrak
+duruyorsa önceki çalışma çökmüş / öldürülmüş demektir: bot sahibe "🔄 yeniden başladım" der ve oncall
+raporunda `unclean_restart` sinyali çıkar (ADR-0021).
 
 ---
 
@@ -389,7 +398,7 @@ devam eder (polling kaçan mesajları da alır). Kesintisiz çalışma isteyen k
 | **2. tasks + scheduler** ✅ | tasks agent, alışkanlıklar, gece işi, akşam özeti | §2'nin tamamı geçiyor, eval ≥ %90 |
 | **3. Kendini genişleten bot** ✅ | builder agent, `kind: records`, kalıcı hatırlatıcılar, `/agents` | Örnek konuşma (takvim) gerçek modelle uçtan uca çalışıyor; eval ≥ %90 |
 | **4. Oncall** ✅ | oncall agent, anlık uyarı, günlük rapor, router canary'si, `make chaos` | 5 enjekte hatanın ≥ 4'ünü doğru teşhis |
-| **5. Platformlaşma + yayın** | `make new-agent`, 3. agent'ı 30 dakikada ekleme, Docker, README, demo videosu | Yeni agent çekirdeğe dokunmadan eklendi; repo herkese açık |
+| **5. Platformlaşma + yayın** ✅ | `make new-agent` + `agents/_template`, notes agent'ı, `make service` (launchd/systemd), Docker, CI, README, LinkedIn taslağı ve demo senaryosu | Yeni agent çekirdeğe dokunmadan eklendi; repo herkese açık |
 
 ---
 

@@ -1,0 +1,14 @@
+# Replies are written by code from these templates, not by the LLM
+# (docs/decisions/0008-kod-yazar-onay-erken-cikis.md).
+tr:
+  added: "✅ Kaydettim (#{id}): {text}"
+  header: "🧩 {{Name}}:"
+  empty: "Henüz kayıt yok."
+  deleted: "🗑️ Sildim: {text}"
+  not_found: "\"{entry}\" diye bir kayıt bulamadım."
+en:
+  added: "✅ Saved (#{id}): {text}"
+  header: "🧩 {{Name}}:"
+  empty: "Nothing saved yet."
+  deleted: "🗑️ Deleted: {text}"
+  not_found: "I couldn't find \"{entry}\"."

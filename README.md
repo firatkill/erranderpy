@@ -6,8 +6,8 @@
 > "From now on I'll study English one hour a day" → becomes a daily habit.
 > "Studied English for 30 minutes today" → today's task is 30/60 min done.
 
-- **A tiny agent platform.** Each agent (shopping, tasks, …) is a folder. Adding a new agent
-  means adding a folder; the core never changes.
+- **A tiny agent platform.** Each agent (shopping, tasks, notes, …) is a folder. `make new-agent`
+  gives you a working one to start from; the core never changes.
 - **Bring any LLM key.** Works with Anthropic, Gemini, DeepSeek or OpenAI — whichever API key you
   put in `.env` is used.
 - **It grows itself.** Ask for something it can't do yet ("11 kasımda 14:00'te AVM") and it proposes a
@@ -15,11 +15,11 @@
   it writes a validated YAML description and the platform builds the agent.
 - **It watches itself.** Every message is traced, and an on-call agent investigates errors and
   wrong decisions, then reports back to you on Telegram.
-- **Two commands to run.** `git clone` and `./start.sh`. No Docker, no database server.
+- **Two commands to run.** `git clone` and `./start.sh`. No Docker, no database server, no open
+  ports. `make service` keeps it running in the background.
 
-> 🚧 **Status: Stage 4.** Shopping, tasks and habits, abilities the bot adds to itself (with reminders),
-> and an on-call agent that watches the bot. Packaging and release come next.
-> Follow progress in [SPEC.md](SPEC.md).
+> **Status: v1 complete (Stage 5).** Shopping, tasks and habits, notes, abilities the bot adds to
+> itself (with reminders), and an on-call agent that watches the bot. See [SPEC.md](SPEC.md).
 
 ## Quick start
 
@@ -47,6 +47,29 @@ bot: 🔎 router.decide · 1.9s → shopping … tool.call add_items · 0.00s �
 Type `/` for the command menu: `/help`, `/agents`, `/status` (active model, today's usage), `/trace`, `/oncall`.
 `make doctor` checks the whole setup.
 
+## Keep it running
+
+```bash
+make service          # macOS: launchd agent · Linux: systemd service (asks for sudo)
+make service-status
+make logs
+make service-uninstall
+```
+
+It starts at login (Mac) or boot (Linux) and restarts after a crash. If a run ends uncleanly
+(crash, kill, power cut), the bot tells you when it's back. On a Mac the bot sleeps when the Mac
+sleeps; messages wait on Telegram and are answered when it wakes.
+
+**Docker instead** (if it's already on your server):
+
+```bash
+cp .env.example .env    # fill in TELEGRAM_BOT_TOKEN and one LLM key
+docker compose up -d
+docker compose logs -f  # the pairing code is here on the first start
+```
+
+Telegram long polling means the bot opens no port: no domain, no HTTPS, nothing to add to nginx.
+
 ## On-call
 
 The bot watches itself. Code checks the traces every 5 minutes and alerts at once on critical
@@ -68,8 +91,15 @@ tools, and explains what went wrong and what to change:
 
 ## Adding an agent
 
-Create `agents/<name>/` with an `agent.yaml` and a `tools.py`. That's it: the router picks it up
-on the next start. See [agents/README.md](agents/README.md) and the [shopping agent](agents/shopping/).
+```bash
+make new-agent NAME=recipes
+```
+
+This copies [agents/_template](agents/_template/) into `agents/recipes/`: a small agent that already
+works (add, list, delete) with its table, reply templates, eval file and a test in `tests/`.
+Describe it in `agent.yaml`, shape `tools.py`, add real messages to `evals.yaml`, then
+`make test && make eval` and restart. The router picks it up; nothing in the core changes.
+The [notes agent](agents/notes/) was made exactly this way. More in [agents/README.md](agents/README.md).
 
 ## Development
 
@@ -80,19 +110,28 @@ make test-live  # contract tests against every provider with a key in .env (< $0
 make eval       # Turkish eval set with the provider the bot would use
 make compare    # same eval set on every provider with a key → reports/eval-*.md
 make chaos      # inject 5 faults, check on-call alerts and diagnoses (a few cents)
+make new-agent NAME=x
 ```
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) checks the setup promise on every push:
+a clean clone installs with uv, passes the tests and `make doctor --offline`, a new agent from the
+template works untouched, the systemd unit is valid, and the Docker image builds.
 
 ## Eval results
 
-46 Turkish cases (30 routing, 16 tool calls), each run 3 times
-([report](reports/2026-11-04-openai-baseline.md)):
+98 Turkish cases (45 routing, 53 tool calls across all agents), each run 3 times
+([report](reports/2026-11-05-openai.md)):
 
 | Model | Routing | Tool calls | Errors | p50 latency | Cost / call |
 |---|---|---|---|---|---|
-| OpenAI gpt-6-luna | 100% | 100% | 0% | 1.65 s | $0.000053 |
+| OpenAI gpt-6-luna | 100% | 99% | 0% | 1.52 s | $0.000100 |
 
-Other providers will be added as they are measured. A perfect score also means the eval set is
-too easy to tell models apart, so harder cases are next.
+The one miss was an outdated case (fixed after the run, see the report). Many cases come from real
+conversations: each message the bot got wrong became a case. Other providers will be added as they
+are measured (`make compare`).
+
+On-call, `make chaos` ([report](reports/2026-11-05-chaos.md)): of 5 injected faults, 5 alerted
+correctly and 5 were diagnosed correctly, in 2 runs.
 
 ## Roadmap
 
@@ -103,7 +142,7 @@ too easy to tell models apart, so harder cases are next.
 | 2 | Tasks & habits agent, nightly scheduler, evening summary | ✅ |
 | 3 | Self-extending bot: builder agent, declarative agents, reminders | ✅ |
 | 4 | On-call agent, online eval (canary), chaos tests | ✅ |
-| 5 | `make new-agent`, Docker, public release | ⏳ |
+| 5 | `make new-agent` + notes agent, `make service`, Docker, CI | ✅ |
 
 ## License
 

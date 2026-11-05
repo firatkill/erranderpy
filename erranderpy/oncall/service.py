@@ -54,6 +54,7 @@ MESSAGES = {
         "llm_unavailable": "🌩️ LLM servisine ulaşılamıyor ({count} hata). Sağlayıcının durum sayfasına bak; sürerse başka bir sağlayıcıya geç.",
         "internal_error": "🐞 Kodda hata: {count} mesaj \"bir şeyler ters gitti\" ile cevaplandı.",
         "scheduler": "⏰ {count} hatırlatmanın vakti geçti ama gönderilmedi: zamanlayıcı çalışmıyor olabilir.",
+        "restarted": "🔄 Yeniden başladım: önceki çalışmam düzgün kapanmamıştı (çökme, kapatma ya da elektrik kesintisi). Bu arada yazdıklarını şimdi cevaplıyorum. Ayrıntı için /oncall.",
     },
     "en": {
         "alert_header": "🚨 On-call alert",
@@ -70,10 +71,34 @@ MESSAGES = {
         "llm_unavailable": "🌩️ The LLM provider can't be reached ({count} errors). Check its status page; switch providers if it lasts.",
         "internal_error": "🐞 A bug in our code: {count} messages got \"something went wrong\".",
         "scheduler": "⏰ {count} reminders are past due but were not sent: the scheduler may not be running.",
+        "restarted": "🔄 I'm back: my previous run did not stop cleanly (crash, kill or power cut). I'm answering what you sent meanwhile. Details: /oncall.",
     },
 }
 
 SEVERITY_ICON = {"critical": "🔴", "warning": "🟠", "info": "🔵"}
+
+RUNNING_KEY = "process.running"
+
+
+def note_start(db: Database) -> bool:
+    """Record that the bot started. True if the previous run never stopped cleanly.
+
+    A clean stop (Ctrl+C, `make service-uninstall`, systemctl stop) clears the
+    flag in note_stop(). If it is still set at start, the last run ended in a
+    crash, a kill or a power cut, and the service manager restarted us. The
+    on-call agent can't see its own death, but it can see this on the way back.
+    """
+    unclean = db.get_setting(RUNNING_KEY) == "1"
+    db.set_setting(RUNNING_KEY, "1")
+    with Tracer(db).span("process.start") as span:
+        span.output = "after an unclean stop" if unclean else "clean"
+        if unclean:
+            span.error = "unclean_stop"
+    return unclean
+
+
+def note_stop(db: Database) -> None:
+    db.set_setting(RUNNING_KEY, "0")
 
 
 @dataclass
@@ -169,6 +194,9 @@ class Oncall:
         if findings is None:
             return Diagnosis(None, "no report", text=said)
         return Diagnosis(findings)
+
+    def restart_notice(self) -> str:
+        return self._t("restarted")
 
     # --- formatting ---------------------------------------------------------------
 

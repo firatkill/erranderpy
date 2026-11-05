@@ -16,7 +16,7 @@ from erranderpy.core.llm import ConfigError, select_provider
 from erranderpy.core.registry import AGENTS_DIR, AgentLoadError, load_agents
 from erranderpy.config import ROOT
 from erranderpy.gateway.telegram import build_application
-from erranderpy.oncall.service import Oncall
+from erranderpy.oncall.service import Oncall, note_start, note_stop
 from erranderpy.pairing import Pairing
 
 
@@ -59,11 +59,18 @@ def main() -> int:
     oncall = Oncall(llm, db, lambda: assistant.agents, settings.language, repo_root=ROOT)
     report_at = os.environ.get("ONCALL_REPORT_TIME", "").strip() or "08:00"
     print(f"✓ On-call: checks every 5 min, report " + ("off" if report_at.lower() in DISABLED else f"every day at {report_at}"))
+    unclean = note_start(db)
+    if unclean:
+        print("⚠️ The previous run did not stop cleanly (crash, kill or power cut); telling the owner.")
     app = build_application(
-        settings.telegram_token, assistant, pairing, settings.language, settings.timezone, oncall, report_at
+        settings.telegram_token, assistant, pairing, settings.language, settings.timezone, oncall, report_at,
+        startup_notice=oncall.restart_notice() if unclean else None,
     )
     print("✅ Ready. Write to your bot on Telegram. (Ctrl+C to stop)")
+    # Returns normally on Ctrl+C and on SIGTERM (systemctl stop, launchctl bootout): a clean
+    # stop. Not in a `finally`: a crash must leave the flag set, so the next start notices it.
     app.run_polling(allowed_updates=["message"])
+    note_stop(db)
     return 0
 
 

@@ -73,3 +73,10 @@ cases:
       - [user, "listeyi boşalt"]
       - [assistant, "🧹 Listeyi temizledim (5 ürün: ekmek, cips, kola, domates, yoğurt). Yanlışlıkla olduysa \"geri al\" yaz."]
     expect: [shopping]
+  # --- notes (Stage 5, the agent added from the template) and its borders ---
+  - {id: r40, message: "bunu bir yere yaz: kiracı ödemeyi her ayın 15'inde yapacak", expect: [notes]}
+  - {id: r41, message: "dizi önerisi geldi, The Bear, ablam çok beğenmiş", expect: [notes]}
+  - {id: r42, message: "tarif notlarımda neler var", expect: [notes]}
+  - {id: r43, message: "yarın faturayı ödemeyi unutma", expect: [tasks]}
+  - {id: r44, message: "deterjan bitmiş", expect: [shopping]}
+  - {id: r45, message: "fikir: haftalık bütçe uygulaması yapmak. bir de süt al", expect: [notes, shopping]}

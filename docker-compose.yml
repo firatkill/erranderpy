@@ -1,0 +1,10 @@
+# docker compose up -d       start in the background (restarts after a crash or reboot)
+# docker compose logs -f     the pairing code appears here on the first start
+# docker compose down        stop
+services:
+  bot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data      # the database and your abilities survive rebuilds
+    restart: unless-stopped

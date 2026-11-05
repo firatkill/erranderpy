@@ -144,3 +144,15 @@ def test_canary_turns_a_silent_misroute_into_a_signal():
     signal = router_canary(RouteEverythingTo("tasks"), agents)
     assert signal.kind == "eval_regression" and signal.count >= 10
     assert any("expected ['shopping'], got ['tasks']" in e for e in signal.examples)
+
+
+def test_an_unclean_stop_is_noticed_at_the_next_start():
+    from erranderpy.oncall.service import note_start, note_stop
+
+    _, oncall, _, db = setup([])
+    assert note_start(db) is False  # first start ever
+    note_stop(db)
+    assert note_start(db) is False  # after a clean stop
+    assert note_start(db) is True  # no stop in between: crash, kill, power cut
+    assert kinds(db)["unclean_restart"].count == 1
+    assert oncall.restart_notice().startswith("🔄 Yeniden başladım")

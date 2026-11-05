@@ -1,0 +1,57 @@
+# The "easy setup" promise, checked on every push (SPEC §12): a clean clone on a fresh
+# machine installs with the same tools start.sh uses, loads every agent, passes the tests,
+# and a new agent from the template works untouched. No real keys: nothing here calls an API.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  clean-clone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv the way start.sh does
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies (uv downloads Python)
+        run: uv sync
+
+      - name: Shell scripts parse
+        run: bash -n start.sh deploy/service.sh
+
+      - name: Offline tests
+        run: make test
+
+      - name: make doctor with fake keys (offline)
+        run: |
+          cp .env.example .env
+          sed -i 's/^TELEGRAM_BOT_TOKEN=.*/TELEGRAM_BOT_TOKEN=123456:ci-fake-token/; s/^OPENAI_API_KEY=.*/OPENAI_API_KEY=sk-ci-fake/; s|^DB_PATH=.*|DB_PATH=/tmp/ci/assistant.db|' .env
+          uv run python -m erranderpy.doctor --offline
+
+      - name: A new agent from the template loads and passes its test
+        run: |
+          make new-agent NAME=ci_probe
+          uv run pytest tests/test_agent_ci_probe.py -q
+
+      - name: The systemd unit make service would install is valid
+        run: |
+          deploy/service.sh print-unit > /tmp/erranderpy.service
+          systemd-analyze verify /tmp/erranderpy.service
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t erranderpy:ci .
+      - name: doctor inside the image (offline, fake keys)
+        run: >
+          docker run --rm -e TELEGRAM_BOT_TOKEN=123456:ci-fake-token -e OPENAI_API_KEY=sk-ci-fake
+          -e DB_PATH=/tmp/ci.db erranderpy:ci /app/.venv/bin/python -m erranderpy.doctor --offline

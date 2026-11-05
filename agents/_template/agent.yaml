@@ -1,0 +1,16 @@
+# Created by `make new-agent NAME={{name}}`. Fill in the TODOs, then `make test` and `make eval`.
+name: {{name}}
+title: "🧩 {{Name}}"
+
+# The router reads `description` and `examples` to decide which messages come here.
+# Say what this agent does AND where its border is with the other agents.
+# Never copy sentences from evals.yaml or evals/router_tr.yaml into `examples`.
+description: "TODO: one sentence in English: what this agent keeps or does for the user."
+examples:
+  - "TODO: a short message a user would send, in Turkish"
+  - "TODO: another one, phrased differently"
+
+system_prompt: |
+  You manage the user's {{name}} entries.
+  Call one tool per request (a message may contain several).
+  TODO: rules the model needs (how to fill the arguments, which tool for what).

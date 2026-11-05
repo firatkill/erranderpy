@@ -6,6 +6,7 @@ Each check is a function returning (ok, message). The setup wizard reuses
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -44,18 +45,23 @@ def check_llm(provider: LLMProvider) -> Check:
     return True, f"LLM: {provider.name} / {provider.model} answered in {result.latency_ms / 1000:.1f}s"
 
 
-def run() -> int:
+def run(offline: bool = False) -> int:
+    """offline: skip the calls to Telegram and the LLM (CI uses fake keys)."""
     results: list[Check] = []
+    warnings: list[str] = []
     env_file = ROOT / ".env"
-    if not env_file.exists():
+    if env_file.exists():
+        load_dotenv(env_file)
+    elif not os.environ.get("TELEGRAM_BOT_TOKEN"):
+        # Docker passes settings as environment variables (env_file in compose), not as a file.
         print("✗ .env not found. Run ./start.sh (it creates one) or copy .env.example to .env.")
         return 1
-    load_dotenv(env_file)
 
     try:
         settings = load_settings()
         results.append((True, f"Settings: language={settings.language}, timezone={settings.timezone.key}"))
-        results.append(check_telegram(settings.telegram_token))
+        if not offline:
+            results.append(check_telegram(settings.telegram_token))
     except ConfigError as exc:
         results.append((False, str(exc)))
         settings = None
@@ -63,7 +69,8 @@ def run() -> int:
     try:
         provider, reason = select_provider()
         results.append((True, reason))
-        results.append(check_llm(provider))
+        if not offline:
+            results.append(check_llm(provider))
     except ConfigError as exc:
         results.append((False, str(exc)))
 
@@ -72,6 +79,12 @@ def run() -> int:
         agents = load_agents(dirs)
         mine = [a.name for a in agents.values() if a.created_by == "builder"]
         results.append((True, f"Agents: {', '.join(agents) or 'none'}" + (f" (created by the bot: {', '.join(mine)})" if mine else "")))
+        # A fresh `make new-agent` folder routes messages with a TODO description.
+        warnings += [
+            f"Agent {a.name}: description still says TODO (agents/{a.name}/agent.yaml); the router can't use it well"
+            for a in agents.values()
+            if "TODO" in a.description
+        ]
     except AgentLoadError as exc:
         results.append((False, f"Agents: {exc}"))
 
@@ -86,6 +99,10 @@ def run() -> int:
 
     for ok, message in results:
         print(("✓ " if ok else "✗ ") + message)
+    for message in warnings:
+        print("⚠ " + message)
+    if offline:
+        print("(offline: Telegram and the LLM were not contacted)")
     failed = sum(not ok for ok, _ in results)
     print("\nAll good." if not failed else f"\n{failed} problem(s) found.")
     return 1 if failed else 0
@@ -99,4 +116,4 @@ def _relative(path: Path) -> str:
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(run(offline="--offline" in sys.argv[1:]))

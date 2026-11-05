@@ -1,0 +1,27 @@
+# Tool eval cases for the notes agent. Matching rules: evals/tools_tr.yaml.
+# Never copy these sentences into agent.yaml `examples`.
+cases:
+  - id: note01
+    message: "not al: pazartesi muhasebeciye faturaları sormak"
+    expect: {tool: add_note, args: {text: "~muhasebeci"}}
+  - id: note02
+    message: "kitap fikri: geçmişe mektup yazan bir yaşlı adam"
+    expect: {tool: add_note, args: {text: "~mektup", tags: {$has: [kitap]}}}
+  - id: note03
+    message: "bir alıntı kaydet, \"az ama öz\""
+    expect: {tool: add_note, args: {text: "~az ama öz"}}
+  - id: note04
+    message: "kitap fikirlerimi listele"
+    expect: {tool: find_notes, args: {tag: "~kitap"}}
+  - id: note05
+    message: "notlarımda muhasebeci geçen ne vardı"
+    expect: {tool: find_notes, args: {query: "~muhasebeci"}}
+  - id: note06
+    message: "son notlarımı göster"
+    expect: {tool: find_notes, args: {tag: null, query: null}}
+  - id: note07
+    message: "3 numaralı nota şunu da ekle: sonunda adam ölmüyor"
+    expect: {tool: append_to_note, args: {note: 're:#?3', text: "~ölmüyor"}}
+  - id: note08
+    message: "muhasebeci notunu sil"
+    expect: {tool: delete_note, args: {note: "~muhasebeci"}}

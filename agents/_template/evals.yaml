@@ -1,0 +1,4 @@
+# Tool eval cases: given a message routed here, does the model call the right tool
+# with the right arguments? Matching rules: evals/tools_tr.yaml. Add 5–10 real messages.
+# Never copy these sentences into agent.yaml `examples`.
+cases: []

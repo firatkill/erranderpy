@@ -22,7 +22,11 @@ def match(expected: Any, actual: Any) -> bool:
         # {"$has": [...]}: the actual list contains (at least) these items, in any order.
         if not isinstance(actual, list):
             return False
-        return all(any(match(item, act) for act in actual) for item in expected["$has"])
+        wanted = expected["$has"]
+        if not isinstance(wanted, list):
+            # {$has: kitap} reads naturally; a string would otherwise be checked letter by letter.
+            wanted = [wanted]
+        return all(any(match(item, act) for act in actual) for item in wanted)
 
     if isinstance(expected, dict):
         if not isinstance(actual, dict):

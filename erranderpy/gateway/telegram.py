@@ -39,6 +39,7 @@ def build_application(
     timezone: ZoneInfo,
     oncall: Oncall | None = None,
     oncall_report_at: str = "08:00",
+    startup_notice: str | None = None,
 ) -> Application:
     async def register_commands(app: Application) -> None:
         """Fill the menu Telegram shows when you type "/": command + description.
@@ -53,7 +54,21 @@ def build_application(
         except Exception:
             log.warning("could not register the command menu with Telegram", exc_info=True)
 
-    app = Application.builder().token(token).post_init(register_commands).build()
+    async def on_start(app: Application) -> None:
+        await register_commands(app)
+        chat_id = oncall_chat()
+        if startup_notice and chat_id is not None:
+            try:
+                await app.bot.send_message(chat_id, startup_notice)
+            except Exception:
+                log.warning("could not send the restart notice", exc_info=True)
+
+    def oncall_chat() -> int | None:
+        """Where on-call messages go: ONCALL_CHAT_ID (e.g. a separate group), else the owner."""
+        chat = os.environ.get("ONCALL_CHAT_ID", "").strip() or assistant.db.get_setting(OWNER_CHAT_KEY)
+        return int(chat) if chat else None
+
+    app = Application.builder().token(token).post_init(on_start).build()
 
     async def guard(update: Update) -> bool:
         """True if the sender is the owner. Handles pairing on the way."""
@@ -124,11 +139,6 @@ def build_application(
                 log.info("job %s.%s is turned off", agent.name, job.name)
                 continue
             app.job_queue.run_daily(run_job, time=at.replace(tzinfo=timezone), data=job, name=f"{agent.name}.{job.name}")
-
-    def oncall_chat() -> int | None:
-        """Where on-call messages go: ONCALL_CHAT_ID (e.g. a separate group), else the owner."""
-        chat = os.environ.get("ONCALL_CHAT_ID", "").strip() or assistant.db.get_setting(OWNER_CHAT_KEY)
-        return int(chat) if chat else None
 
     async def oncall_check(context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = oncall_chat()

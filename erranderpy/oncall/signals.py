@@ -100,6 +100,8 @@ def detect(db: Database, since: datetime, now: datetime, daily_budget_usd: float
                     "the multi-request check ran (fewer tool calls than requests, or a check of several requests)")
     found += _spans(db, s, "tool.call", "error IN ('unknown_tool', 'invalid_arguments')", "tool_call_errors", INFO,
                     "the model called a tool that doesn't exist or with invalid arguments (it got a retry)")
+    found += _spans(db, s, "process.start", "error = 'unclean_stop'", "unclean_restart", WARNING,
+                    "the bot restarted after an unclean stop (crash, kill, power cut); check the logs (make logs)")
     found += _user_doubt(db, s)
     found += _repeats(db, s)
     st = stats(db, since)

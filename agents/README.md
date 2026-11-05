@@ -3,6 +3,14 @@
 Each folder here is one agent. The core finds them on start; adding an agent never requires
 editing core code.
 
+```bash
+make new-agent NAME=recipes     # copies _template/ into recipes/ and a test into tests/
+```
+
+The template is a small working agent (add / list / delete): it loads, passes its test and answers
+on Telegram before you change anything. Then fill the TODOs. `make doctor` warns while the
+description still says TODO. The `notes/` agent was created this way.
+
 There are two kinds:
 - **code agents** (this folder): you write `tools.py`. Full power.
 - **records agents**: a YAML description only (`kind: records`); the platform generates the tools.
@@ -66,5 +74,5 @@ make eval     # includes the cases in your evals.yaml
 
 Never copy sentences from `evals.yaml` into `examples`: the eval would measure recall, not understanding.
 
-See `shopping/` for a complete example, and the [decision record](../docs/decisions/0009-agent-eklenti-sozlesmesi.md)
+See `notes/` for an agent built from the template, `shopping/` for a complete example, and the [decision record](../docs/decisions/0009-agent-eklenti-sozlesmesi.md)
 for why it works this way.
