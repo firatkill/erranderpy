@@ -135,10 +135,13 @@ def complete_task(ctx: ToolContext, title: str) -> str:
     """Mark a task (or today's part of a habit) as done."""
     today = _today(ctx)
     ensure_habit_tasks(ctx.db, ctx.user_id, today)
-    # Open tasks up to today: today's list plus anything overdue.
+    # Today's open tasks plus overdue one-off tasks. A habit's past days are not
+    # candidates (the overdue list hides them too): live, yesterday's unfinished
+    # "ingilizce okuma" made today's one ambiguous and the reply was "not found".
     rows = ctx.db.query(
-        "SELECT * FROM tasks WHERE user_id = ? AND status = 'open' AND day <= ? ORDER BY day DESC, id",
-        (ctx.user_id, today.isoformat()),
+        "SELECT * FROM tasks WHERE user_id = ? AND status = 'open' "
+        "AND (day = ? OR (day < ? AND habit_id IS NULL)) ORDER BY day DESC, id",
+        (ctx.user_id, today.isoformat(), today.isoformat()),
     )
     task = find_unique(title, [(r["title"], r) for r in rows])
     if task is None:

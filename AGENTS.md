@@ -139,7 +139,8 @@ The reasoning behind each decision, in one or two lines. Code comments refer to 
 - **ADR-0015 Undo instead of "are you sure?".** Clearing the shopping list happens at once and can be undone.
 - **ADR-0016 Several requests for one agent.** The router's split travels with the route; the agent
   is told the list; a one-time check runs for every multi-request message; questions after it are
-  kept; repeated identical calls are skipped.
+  kept; repeated identical calls are skipped. One verb on several named things ("X ve Y'yi tamamladım") is one
+  request per thing; a shopping list stays one request.
 - **ADR-0017 Records agents see their entries.** Upcoming entries with #numbers are in the prompt on
   every turn; a clock time that no time expression in the chat mentions is not saved.
 - **ADR-0018 On-call: code detects, the LLM explains, code writes.** Signals from traces without an

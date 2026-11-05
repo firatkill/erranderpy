@@ -162,3 +162,18 @@ def test_consonant_softening():
     assert not phrases_match("su", "sucuk")
     assert find_unique("su", [("sucuk", 1)]) is None
     assert find_unique("yağ", [("zeytinyağı", 1)]) == 1
+
+
+def test_completing_a_habit_the_day_after_a_missed_day(tasks):
+    # Live (2026-11-05): yesterday's habit rows were still open, so "ingilizce okuma"
+    # matched two rows and complete_task answered "not found" for a habit on today's list.
+    tasks("create_habit", name="ingilizce okuma", daily_minutes=30)
+    tasks("create_habit", name="diksiyon alıştırmaları")
+    tasks.now = TUESDAY + timedelta(days=1)
+    assert tasks("complete_task", title="ingilizce okuma") == "✅ Tamamlandı: ingilizce okuma."
+    assert tasks("complete_task", title="diksiyon alıştırmaları") == "✅ Tamamlandı: diksiyon alıştırmaları."
+    # A one-off task from yesterday is still overdue and can be completed.
+    tasks.now = TUESDAY
+    tasks("add_task", title="faturayı öde")
+    tasks.now = TUESDAY + timedelta(days=1)
+    assert tasks("complete_task", title="faturayı öde") == "✅ Tamamlandı: faturayı öde."

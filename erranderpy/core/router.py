@@ -46,6 +46,10 @@ def build_router_prompt(agents: Sequence[Routable]) -> str:
         "Actions joined by 'sonra', 'ayrıca', 'bir de', 'and then' are separate requests even when the same agent "
         "handles them ('notları sil, sonra şunu ekle' is 2 requests for notes). Text the user pastes as the content "
         "of a request (a long note, a list) stays inside that request; never split it.",
+        # Live (2026-11-05): "ingilizce okuma ve diksiyon alıştırmalarını tamamladım" sometimes came back
+        # as one request, so the second habit was silently left open.
+        "Finishing, starting or deleting several named things at once is one request per thing "
+        "('X ve Y'yi tamamladım' is 2 requests). A shopping list of items stays one request.",
         "Earlier messages are only context; route only the latest user message.",
         "",
         "Agents:",

@@ -83,3 +83,6 @@ cases:
   - {id: r45, message: "fikir: haftalık bütçe uygulaması yapmak. bir de süt al", expect: [notes, shopping]}
   # Live (2026-11-05): two actions for one agent with a pasted note; must be 2 requests (checked in runtime).
   - {id: r46, message: "notları tamamen temizle, sonra yeni bir not olarak şunu ekle:\n\nDiksiyon çalışması:\nLar\nLer\n\n1: Kırk kırık küp kırkınında kulbu kırık kırk kara küp.", expect: [notes], requests: 2}
+  # Live (2026-11-05): one verb, two habits; must be 2 requests so a missed one is caught.
+  - {id: r47, message: "ingilizce okuma ve diksiyon alıştırmalarını tamamladım", expect: [tasks], requests: 2}
+  - {id: r48, message: "süt, yumurta ve peynir al", expect: [shopping], requests: 1}
