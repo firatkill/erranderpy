@@ -151,12 +151,13 @@ def test_a_dropped_request_gets_one_nudge():
             route_answer(("shopping", "süt al"), ("shopping", "ekmeği aldım")),
             tool_answer(("add_items", {"items": [{"name": "süt"}]})),
             tool_answer(("add_items", {"items": [{"name": "ekmek"}]})),
+            text_answer("DONE"),  # after the check it may keep going, until DONE or a question
         ]
     )
     reply = assistant.handle(USER, CHAT, "süt al. ekmeği de ekle")
     assert reply.count("🛒 Ekledim") == 2
     assert "2 requests for you" in llm.calls[1]["system"]
-    assert "[system check] You made 1 tool call(s) for 2 requests" in llm.calls[2]["messages"][-1].text
+    assert "[system check] The message had 2 requests:\n1. süt al\n2. ekmeği aldım" in llm.calls[2]["messages"][-1].text
     steps = [s["step"] for s in load_trace(db, db.recent_messages(CHAT, 1)[0]["trace_id"])]
     assert "agent.nudge" in steps
 
@@ -193,7 +194,7 @@ def test_a_repeated_call_after_the_nudge_is_not_run_twice():
     assert db.one("SELECT COUNT(*) AS n FROM traces WHERE step = 'tool.call'")["n"] == 1
 
 
-def test_records_agent_sees_its_entries_in_the_prompt():
+def with_calendar(answers):
     from erranderpy.core.records import RecordsSpec, build_records_agent
 
     spec = {
@@ -201,7 +202,13 @@ def test_records_agent_sees_its_entries_in_the_prompt():
         "description": "Keeps events at a date and time.",
         "fields": [{"name": "title", "type": "text", "required": True}, {"name": "when", "type": "datetime", "required": True}],
     }
-    assistant, llm, _ = make(
+    assistant, llm, db = make(answers)
+    assistant.agents["calendar"] = build_records_agent(RecordsSpec.model_validate(spec))
+    return assistant, llm, db
+
+
+def test_records_agent_sees_its_entries_in_the_prompt():
+    assistant, llm, _ = with_calendar(
         [
             route_answer(("calendar", "30 aralık 10:00 dişçi")),
             tool_answer(("add_entry", {"title": "Dişçi", "when": "2099-12-30 10:00"})),
@@ -209,8 +216,44 @@ def test_records_agent_sees_its_entries_in_the_prompt():
             tool_answer(("update_entry", {"entry": "#1", "when": "11:00"})),
         ]
     )
-    assistant.agents["calendar"] = build_records_agent(RecordsSpec.model_validate(spec))
     assistant.handle(USER, CHAT, "30 aralık 10:00 dişçi")
     assistant.handle(USER, CHAT, "dişçiyi 11'e al")
     assert "no upcoming entries" in llm.calls[1]["system"]
     assert "#1 · Dişçi · 30.12" in llm.calls[3]["system"]
+
+
+def test_check_runs_even_when_calls_outnumber_requests_and_a_question_is_kept():
+    # Live, 2026-11-05 04:03: "hepsini sil. 8 kasıma toplantı koy" made 4 deletes for
+    # 2 requests, so counting calls saw nothing missing; the meeting, which needed a
+    # clock time, was dropped without a word.
+    assistant, llm, _ = with_calendar(
+        [
+            route_answer(("calendar", "29 aralık 10:00 dişçi, 30 aralık 11:00 berber")),
+            tool_answer(("add_entry", {"title": "Dişçi", "when": "2099-12-29 10:00"}), ("add_entry", {"title": "Berber", "when": "2099-12-30 11:00"})),
+            route_answer(("calendar", "hepsini sil."), ("calendar", "31 aralığa toplantı koy")),
+            tool_answer(("delete_entry", {"entries": ["#1"]}), ("delete_entry", {"entries": ["#2"]})),
+            text_answer("31 Aralık'ta toplantı saat kaçta?"),
+        ]
+    )
+    assistant.handle(USER, CHAT, "29 aralık 10:00 dişçi, 30 aralık 11:00 berber")
+    reply = assistant.handle(USER, CHAT, "hepsini sil. 31 aralığa toplantı koy")
+    assert reply.count("🗑️ Sildim") == 2
+    assert reply.endswith("31 Aralık'ta toplantı saat kaçta?")
+    assert "2. 31 aralığa toplantı koy" in llm.calls[-1]["messages"][-1].text
+
+
+def test_finished_replies_survive_a_step_that_needs_another_round():
+    # One call done (delete), one sent back to the model (a date with no time);
+    # the model then asks. The delete's reply must not be lost.
+    assistant, _, _ = with_calendar(
+        [
+            route_answer(("calendar", "29 aralık 10:00 dişçi")),
+            tool_answer(("add_entry", {"title": "Dişçi", "when": "2099-12-29 10:00"})),
+            route_answer(("calendar", "dişçiyi sil, 31 aralığa toplantı koy")),
+            tool_answer(("delete_entry", {"entries": ["#1"]}), ("add_entry", {"title": "Toplantı", "when": "2099-12-31 00:00"})),
+            text_answer("Toplantı saat kaçta?"),
+        ]
+    )
+    assistant.handle(USER, CHAT, "29 aralık 10:00 dişçi")
+    reply = assistant.handle(USER, CHAT, "dişçiyi sil, 31 aralığa toplantı koy")
+    assert reply.startswith("🗑️ Sildim: Dişçi") and reply.endswith("Toplantı saat kaçta?")

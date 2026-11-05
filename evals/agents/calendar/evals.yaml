@@ -30,7 +30,7 @@ cases:
     history:
       - [user, "11 kasım 14:00 avm"]
       - [assistant, "📅 Kaydettim: AVM · 11.11 Çarşamba 14:00."]
-    expect: {tool: delete_entry, args: {entry: "~avm"}}
+    expect: {tool: delete_entry, args: {entries: ["~avm"]}}
   - id: cal08
     message: "11 kasım 15:00'te uçuşum var, 3 saat önce hatırlat"
     expect: {tool: add_entry, args: {title: "~uçuş", when: "~-11-11 15:00", remind_before_minutes: 180}}

@@ -191,7 +191,7 @@ def _entries_context(spec: RecordsSpec, ctx: ToolContext) -> str:
         lines.append(f"... and {len(rows) - CONTEXT_ENTRIES} more (find them with list_entries and a query)")
     listing = "\n".join(lines)
     return (
-        f"\n\nThe user's {heading} (to change or delete one, pass its #number as entry):\n{listing}\n"
+        f"\n\nThe user's {heading} (to change or delete one, pass its #number):\n{listing}\n"
         "A request about one of these (\"8 kasımdaki toplantı\") is update_entry or delete_entry on it, "
         "never a new entry. If several could match, ask which one."
     )
@@ -225,7 +225,7 @@ def _system_prompt(spec: RecordsSpec) -> str:
         )
     lines += [
         "Tools: add_entry saves a new entry, list_entries shows them to the user, update_entry changes one, "
-        "delete_entry removes one.",
+        "delete_entry removes one or more (all of them in one call).",
         "To change or delete an entry, call update_entry / delete_entry directly with its #number (from the "
         "entries at the end of this prompt). Never call list_entries first: listing ends your turn.",
         "When updating a date-time, send only what changes: just the date (YYYY-MM-DD) to move it to another day "
@@ -293,7 +293,15 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
     update_model = _args_model(
         f"{spec.name}_update", spec, all_optional=True, extra={"entry": entry_field, **ambiguity, **remind}
     )
-    delete_model = pydantic.create_model(f"{spec.name}_delete", entry=entry_field)
+    # A list: "hepsini sil" is one call, not one call per entry (live, the model
+    # sometimes deleted them one per step and ran out of steps).
+    delete_model = pydantic.create_model(
+        f"{spec.name}_delete",
+        entries=(
+            Annotated[list[str], Field(min_length=1, description=f"which {item} entries: #numbers or {spec.title_field}s")],
+            ...,
+        ),
+    )
     scope = (Literal["upcoming", "all"], "upcoming") if spec.time_fields else (Literal["all"], "all")
     list_model = pydantic.create_model(
         f"{spec.name}_list",
@@ -307,12 +315,13 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
         data, error = _parse_values(spec, values, ctx)
         if error:
             return ToolResult(error, final=False)  # the model fixes the value or asks the user
-        if (field := _unsaid_midnight(spec, data, ctx)) is not None:
-            # "8 kasım" with no clock time arrives as "2026-11-08 00:00". Don't save a
-            # time the user never gave (live, 2026-11-05: a new entry at 00:00).
+        if (unsaid := _unsaid_time(spec, data, ctx)) is not None:
+            # "8 kasım" with no clock time arrived as 00:00 (live, 2026-11-05), and in a
+            # replay as an invented 09:00. Don't save a time nobody said.
+            field, at = unsaid
             return ToolResult(
-                f"The user gave no clock time for '{field}'. If the request is about an existing entry, "
-                "use update_entry with its #number. Otherwise ask the user what time, and call no tool.",
+                f"The user never said the clock time {at} for '{field}'. If the request is about an existing "
+                "entry, use update_entry with its #number. Otherwise ask the user what time, and call no tool.",
                 final=False,
             )
         if time_ambiguous and (question := _ambiguity_question(spec, data, ctx)):
@@ -374,19 +383,23 @@ def _make_tools(spec: RecordsSpec) -> list[Tool]:
         text = ctx.t("updated", summary=_summary(spec, data, ctx))
         return ToolResult(_with_reminders(spec, row["id"], data, ctx, text))
 
-    def delete_entry(ctx: ToolContext, entry: str) -> str:
-        row = _find(spec, entry, ctx)
-        if row is None:
-            return ctx.t("not_found", entry=entry)
-        ctx.db.execute("UPDATE records SET deleted_at = ? WHERE id = ?", (utc_now_iso(), row["id"]))
-        reminders.cancel_for_record(ctx.db, spec.name, row["id"])
-        return ctx.t("deleted", summary=_summary(spec, _data(row), ctx))
+    def delete_entry(ctx: ToolContext, entries: list[str]) -> str:
+        lines = []
+        for entry in dict.fromkeys(entries):  # "#2" twice is one deletion
+            row = _find(spec, entry, ctx)
+            if row is None:
+                lines.append(ctx.t("not_found", entry=entry))
+                continue
+            ctx.db.execute("UPDATE records SET deleted_at = ? WHERE id = ?", (utc_now_iso(), row["id"]))
+            reminders.cancel_for_record(ctx.db, spec.name, row["id"])
+            lines.append(ctx.t("deleted", summary=_summary(spec, _data(row), ctx)))
+        return "\n".join(lines)
 
     definitions = [
         ("add_entry", f"Save a new {item}.", add_entry, add_model),
         ("list_entries", f"Show {item} entries to the user. Not needed before update_entry or delete_entry.", list_entries, list_model),
         ("update_entry", f"Change fields of an existing {item}; send only the fields that change.", update_entry, update_model),
-        ("delete_entry", f"Delete a {item}.", delete_entry, delete_model),
+        ("delete_entry", f"Delete one or more {item} entries in one call (all of them: every #number).", delete_entry, delete_model),
     ]
     return [
         Tool(name, desc, fn, model, ToolSpec(name, desc, clean_schema(model.model_json_schema())))
@@ -424,15 +437,49 @@ def _parse_values(spec: RecordsSpec, values: dict[str, Any], ctx: ToolContext, p
 
 # Ways to actually say midnight; anything else that became 00:00 was a date without a time.
 _MIDNIGHT = re.compile(r"00[:.]00|24[:.]00|gece\s*yar[ıi]s|gece\s*12|midnight|12\s*am|saat\s*00?\b", re.IGNORECASE)
+_NOON = re.compile(r"öğle|ogle|noon", re.IGNORECASE)
 
 
-def _unsaid_midnight(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContext) -> str | None:
-    """The name of a date-time field set to 00:00 although the request never says midnight."""
-    if not ctx.request_text or _MIDNIGHT.search(ctx.request_text):
-        return None
+# Ways people write a clock hour: "14:00", "9.30", "saat 9", "2'de", "akşam 8", "9 buçuk", "3pm".
+# A bare number is not enough: "8 kasım" is a date, "#2" an entry, "1 saat önce" a duration.
+_HOUR_PATTERNS = [
+    re.compile(r"(?<![\d#])(\d{1,2})[:.]\d{2}(?!\d)"),
+    re.compile(r"\b(?:saat|at)\s*(\d{1,2})(?!\d)", re.IGNORECASE),
+    re.compile(r"(?<![\d#])(\d{1,2})\s*['’]?\s*(?:de|da|te|ta|e|a|ye|ya)\b", re.IGNORECASE),
+    re.compile(r"\b(?:sabah|öğle(?:den sonra)?|ogleden sonra|akşam|aksam|gece)\s*(\d{1,2})(?!\d)", re.IGNORECASE),
+    re.compile(r"(?<![\d#])(\d{1,2})\s*(?:buçuk|bucuk|gibi|am\b|pm\b)", re.IGNORECASE),
+]
+
+
+def said_hours(text: str) -> set[int]:
+    """Clock hours mentioned in a text (as written: "akşam 8" gives 8)."""
+    hours = set()
+    for pattern in _HOUR_PATTERNS:
+        hours |= {int(h) for h in pattern.findall(text) if int(h) <= 24}
+    return hours
+
+
+def _unsaid_time(spec: RecordsSpec, data: dict[str, Any], ctx: ToolContext) -> tuple[str, str] | None:
+    """(field, "HH:MM") for a clock time nobody said: not in the request, not in the chat.
+
+    Lenient on purpose: the hour only has to be mentioned ("akşam 8" counts for
+    20:00; the bot's own "14:00 mi, 02:00 mı?" counts for 14:00). It catches a time
+    made up from nothing (live: 00:00, in a replay: 09:00), not every mistake.
+    """
+    if not ctx.request_text:
+        return None  # not called from a chat message (tests, jobs): nothing to check against
+    said = f"{ctx.request_text}\n{ctx.conversation}"
+    hours = said_hours(said)
     for f in spec.fields:
-        if f.type == "datetime" and data.get(f.name, "").endswith("T00:00"):
-            return f.name
+        if f.type != "datetime" or not data.get(f.name):
+            continue
+        moment = datetime.fromisoformat(data[f.name])
+        if moment.hour == moment.minute == 0:
+            ok = _MIDNIGHT.search(said) is not None or 24 in hours
+        else:
+            ok = bool({moment.hour, moment.hour % 12 or 12} & hours) or (moment.hour == 12 and _NOON.search(said))
+        if not ok:
+            return f.name, f"{moment:%H:%M}"
     return None
 
 

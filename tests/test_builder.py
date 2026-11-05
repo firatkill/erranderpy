@@ -203,7 +203,7 @@ def test_updating_an_ability_keeps_entries_and_adds_reminders_to_them(tmp_path):
     )
     assistant.handle(USER, CHAT, "takvim")
     assistant.handle(USER, CHAT, "evet")
-    assert "hatırlatacağım" not in assistant.handle(USER, CHAT, "toplantı")
+    assert "hatırlatacağım" not in assistant.handle(USER, CHAT, "5 kasım 14:00 toplantı")
     preview = assistant.handle(USER, CHAT, "takvime 1 saat önce hatırlatma ekle")
     assert preview.startswith("🧩 Güncelleme önerisi: 📅 Takvim")
     assert assistant.handle(USER, CHAT, "evet") == "✅ 📅 Takvim güncellendi. Bekleyen hatırlatma sayısı: 1."

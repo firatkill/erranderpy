@@ -89,9 +89,13 @@ def run_agent(
             span.output = {"text": result.text, "tool_calls": [{"name": c.name, "args": c.arguments} for c in result.tool_calls]}
 
         if not result.tool_calls:
-            if nudged:
-                return "\n".join(done)  # "DONE": nothing was missing after all
-            return result.text.strip()  # a question back to the user, or a plain answer
+            # A question back to the user or a plain answer; after the check also
+            # "DONE". Whatever tools already did this turn is sent along with it
+            # ("🗑️ Sildim ..." + "8 kasımda saat kaçta?").
+            answer = result.text.strip()
+            if answer and not (nudged and _is_done(answer)):
+                done.append(answer)
+            return "\n".join(done)
 
         messages.append(result.message)
         outputs = []
@@ -108,27 +112,44 @@ def run_agent(
         for call, output in zip(result.tool_calls, outputs, strict=True):
             messages.append(Message.tool_result(call.id, output.text))
         calls_made += len(result.tool_calls)
+        # Finished replies are kept even when another call in the same step needs
+        # another round (its result is not final): they must not get lost.
+        done += [o.text for c, o in zip(result.tool_calls, outputs, strict=True) if o.final and c.id not in skipped]
 
         if all(o.final for o in outputs):
-            done += [o.text for c, o in zip(result.tool_calls, outputs, strict=True) if c.id not in skipped]
-            if calls_made < expected and not nudged:
-                # Fewer tool calls than requests: one may have been dropped silently
-                # (seen live: "add X. also remind me about Y" did only X). Ask once.
+            if nudged:
+                # Still working after the check (a dropped request done now): let it
+                # go on until it says DONE or asks. MAX_STEPS still bounds this.
+                continue
+            if expected >= 2:
+                # Several requests: check once that none was dropped. Counting calls is
+                # not enough: "hepsini sil. 8 kasıma toplantı koy" made 4 deletes (4 >= 2)
+                # and silently skipped the meeting, which needed a question (what time?).
+                # A question can't go out in the same reply as tool calls, so it gets
+                # its chance here. Costs one call, only for multi-request messages.
                 nudged = True
                 with ctx.tracer.span("agent.nudge", agent=agent.name) as nudge:
                     nudge.output = f"{calls_made} tool call(s) for {expected} requests"
-                messages.append(
-                    Message.user(
-                        f"[system check] You made {calls_made} tool call(s) for {expected} requests. One call can "
-                        "cover several requests (e.g. two items in one add). If a request is still not handled, call "
-                        "its tool now; never repeat a call you already made. If all are done, reply with the single "
-                        "word DONE."
-                    )
-                )
+                messages.append(Message.user(_check_message(requests)))
                 continue
             return "\n".join(done)  # early exit
 
     raise TooManySteps(f"agent {agent.name} did not finish in {MAX_STEPS} steps")
+
+
+def _check_message(requests: tuple[str, ...]) -> str:
+    listing = "\n".join(f"{i}. {r}" for i, r in enumerate(requests, start=1))
+    return (
+        f"[system check] The message had {len(requests)} requests:\n{listing}\n"
+        "Check each one against the tool results above. One call can cover several requests (e.g. two items "
+        "in one add). If a request is not handled yet, call its tool now; never repeat a call you already made. "
+        "If a request needs something the user hasn't said (e.g. a clock time), reply with one short question "
+        "about it, in the user's language, and call no tool. If everything is done, reply with the single word DONE."
+    )
+
+
+def _is_done(answer: str) -> bool:
+    return answer.strip().strip(".!").upper() == "DONE"
 
 
 def _run_tool_call(agent: Agent, name: str, arguments: dict, ctx: ToolContext) -> ToolResult:

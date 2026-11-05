@@ -39,6 +39,9 @@ class ToolContext:
     messages: dict[str, str] = field(default_factory=dict)  # this agent's reply templates, one language
     tracer: Tracer | None = None
     request_text: str = ""  # the request routed to this agent
+    # The recent chat as plain text (user and bot). Lets a tool check that a value
+    # really came from the conversation, e.g. a clock time the model may invent.
+    conversation: str = ""
     # Tools ask the pipeline for things beyond a reply by setting effects,
     # e.g. {"reload_agents": True, "replay": "11 kasım 14:00 avm"} (see Assistant).
     effects: dict[str, Any] = field(default_factory=dict)

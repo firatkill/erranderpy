@@ -106,6 +106,7 @@ class Assistant:
         if agent is None or r.agent == UNKNOWN:
             return self._fallback(r.text, history, tracer)
         ctx = self._context(agent, user_id, chat_id, tracer, r.text)
+        ctx.conversation = _said_so_far(history)
         reply = run_agent(self.llm, agent, r.text, ctx, history, r.requests)
 
         # Effects a tool asked for (the builder after creating an agent):
@@ -243,6 +244,17 @@ class Assistant:
 
     def _t(self, key: str, **values) -> str:
         return messages.t(self.language, key, **values)
+
+
+def _said_so_far(history: list[Message]) -> str:
+    """What tools may treat as "the user said it": the user's recent messages, plus
+    the bot's last message if it was a question ("14:00 mi, 02:00 mı?" answered by
+    "öğleden sonra"). Other bot messages are left out: lists and summaries are full
+    of times the user didn't ask for now."""
+    texts = [m.text for m in history if m.role == "user"]
+    if history and history[-1].role == "assistant" and "?" in history[-1].text:
+        texts.append(history[-1].text)
+    return "\n".join(texts)
 
 
 def format_trace(trace_id: str, spans: list[dict]) -> str:

@@ -77,7 +77,7 @@ def test_add_list_update_delete_with_reminders():
     assert cal("update_entry", entry="avm", when="2026-11-11 15:30").text.startswith("✏️ Güncelledim: AVM · 11.11 Çarşamba 15:30")
     assert [r["due_at"] for r in cal.pending()] == ["2026-11-11T11:30:00+00:00"]  # old reminder cancelled
 
-    assert cal("delete_entry", entry="#1").text == "🗑️ Sildim: AVM · 11.11 Çarşamba 15:30 · Kadıköy."
+    assert cal("delete_entry", entries=["#1"]).text == "🗑️ Sildim: AVM · 11.11 Çarşamba 15:30 · Kadıköy."
     assert cal.pending() == []
     assert cal("list_entries").text == "📅 Takvim: kayıt yok."
 
@@ -213,7 +213,7 @@ def test_prompt_context_lists_upcoming_entries_with_numbers():
 def test_a_date_without_a_time_is_not_saved_at_midnight():
     cal = Calendar()
     out = cal("add_entry", _said="8 kasımdaki toplantı için 1 saat önce hatırlat", title="Toplantı", when="2026-11-08 00:00")
-    assert not out.final and "no clock time" in out.text
+    assert not out.final and "never said the clock time 00:00" in out.text
     assert cal.db.query("SELECT * FROM records") == []
     # Midnight said out loud is fine.
     out = cal("add_entry", _said="8 kasım gece yarısı yılbaşı partisi", title="Parti", when="2026-11-08 00:00")
@@ -225,3 +225,40 @@ def test_update_with_midnight_that_was_not_said_keeps_the_time():
     cal("add_entry", title="Toplantı", when="2026-11-08 15:00")
     out = cal("update_entry", _said="toplantıyı 9 kasıma al", entry="#1", when="2026-11-09 00:00")
     assert "09.11 Pazartesi 15:00" in out.text
+
+
+def test_delete_takes_several_entries_in_one_call():
+    cal = Calendar()
+    cal("add_entry", title="A", when="2026-11-08 10:00")
+    cal("add_entry", title="B", when="2026-11-09 10:00")
+    out = cal("delete_entry", entries=["#1", "#2", "#2", "#9"])
+    assert out.text.count("🗑️ Sildim") == 2 and '"#9" diye bir kayıt bulamadım.' in out.text
+    assert cal.pending() == []
+
+
+@pytest.mark.parametrize(
+    ("said", "when", "saved"),
+    [
+        ("8 kasıma toplantı koy", "2026-11-08 09:00", False),  # replay: an invented 09:00
+        ("8 kasım saat 09.00 toplantı", "2026-11-08 09:00", True),
+        ("8 kasım akşam 8 sinema", "2026-11-08 20:00", True),
+        ("8 kasım öğlen yemek", "2026-11-08 12:00", True),
+        ("8 kasıma toplantı koy", "2026-11-08 08:00", False),  # "8 kasım" is a date, not 08:00
+        ("#2'yi sil, 8 kasım toplantı", "2026-11-08 02:00", False),
+        ("8 kasım 2'de toplantı", "2026-11-08 14:00", True),
+        ("8 kasım 9 buçukta", "2026-11-08 09:30", True),
+    ],
+)
+def test_a_clock_time_nobody_said_is_not_saved(said, when, saved):
+    cal = Calendar()
+    out = cal("add_entry", _said=said, title="X", when=when)
+    assert out.final is saved
+    assert len(cal.db.query("SELECT * FROM records")) == int(saved)
+
+
+def test_a_time_from_the_recent_chat_counts():
+    # "öğleden sonra" answers the bot's own "14:00 mi, 02:00 mı?"
+    cal = Calendar()
+    ctx = cal.ctx("öğleden sonra")
+    ctx.conversation = "11 kasımda saat 2'de avm\n🕑 Saat 2 derken öğleden sonra 14:00 mi, yoksa 02:00 mı?"
+    assert cal.agent.tools["add_entry"].run(ctx, {"title": "AVM", "when": "2026-11-11 14:00"}).final
