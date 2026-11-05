@@ -55,7 +55,7 @@ Telegram ──▶ Gateway ──▶ Router ──▶ [Agent 1..N] ──▶ Too
                │           │             │
                │           └──── LLM katmanı (sağlayıcıdan bağımsız) ────┘
                │
-               └── her mesaja trace_id ── tüm adımlar ──▶ Trace store ──▶ Oncall agent ──▶ Telegram (ayrı sohbet)
+               └── her mesaja trace_id ── tüm adımlar ──▶ Trace store ──▶ Oncall ──▶ Telegram (sahibe ya da ONCALL_CHAT_ID)
 
 Scheduler (APScheduler): 00:00 günlük görev üretimi · 21:00 akşam özeti · 08:00 oncall günlük rapor
 ```
@@ -76,7 +76,7 @@ Veritabanına yazmak, tarih hesaplamak, liste biçimlendirmek deterministik Pyth
 | `erranderpy/core/db.py` | SQLite; `messages` tablosu = kısa süreli hafıza (son 6 mesaj). `facts` (uzun süreli) Aşama 2'de |
 | `erranderpy/core/tracing.py` | Her adımı `traces` tablosuna yazar (bkz. §8); Telegram'da `/trace` |
 | `erranderpy/core/jobs.py` | Agent'ların `jobs.py`'deki `@daily` işleri; gateway JobQueue ile kurar (ADR-0010) |
-| `oncall/` | Oncall agent'ı (kendisi de bir agent, ama ayrı kanaldan konuşur) |
+| `erranderpy/oncall/` | Oncall: `signals.py` (kod: ne bozuk), `agent.py` (LLM: neden), `canary.py` (canlı agent'larla router eval'i), `service.py` (uyarı / rapor), `chaos.py` (`make chaos`). Router'a görünmez, mesajları sohbet geçmişine girmez (ADR-0018) |
 
 ---
 
@@ -255,27 +255,35 @@ v1'de kendi SQLite tablomuz yeterli; v2'de OpenTelemetry → Langfuse veya New R
 
 ## 10. Oncall agent
 
-**Ne izler:**
-- Teknik: exception'lar, LLM API hata/timeout oranı, p95 gecikme, scheduler çalıştı mı, günlük maliyet
-- Anlamsal: `feedback` kayıtları, router'ın "bilinmeyen" dediği mesajlar, aynı mesajın kısa sürede tekrar yazılması
+Üç katman (ADR-0018): **kod tespit eder, LLM açıklar, kod yazar.**
 
-**Tetikleyiciler:**
-- Anlık: kritik hata (ör. art arda 3 LLM hatası, scheduler kaçtı) → hemen araştır
-- Günlük 08:00: son 24 saatin raporu + gece eval sonucu
+**1. Sinyaller (kod, LLM yok; `oncall/signals.py`):**
+- Teknik: LLM hataları türüne göre (`auth` / `bad_request` / zaman aşımı…), kodumuzdaki exception'lar
+  (hangi span'da), vakti geçmiş ama gönderilmemiş hatırlatmalar (zamanlayıcı durmuş), başarısız
+  zamanlanmış işler, p95 gecikme, günlük maliyet bütçesi (`ONCALL_DAILY_BUDGET_USD`).
+- Anlamsal: `unknown`'a giden mesajlar, `agent.nudge` (çoklu istek kontrolü), geçersiz tool çağrıları,
+  kullanıcının şüphesi ya da düzeltmesi ("koydun mu?", "öyle demedim", "geri al"), 3 dakika içinde
+  aynı mesajın tekrarı.
+- **Canary (online eval, `oncall/canary.py`):** Router eval'i botun **çalışan** agent'larıyla koşulur.
+  Hiç hata üretmeyen sessiz yanlış yönlendirmeleri yakalar (ADR-0019).
 
-**Tool'ları (salt okunur):**
-`query_traces(filter)`, `get_trace(trace_id)`, `get_errors(since)`, `get_feedback(since)`,
-`get_agent_config(name)`, `run_eval(agent)`, `get_recent_commits()`, `llm_health()`
+**2. Teşhis (LLM, salt okunur tool'lar; `oncall/agent.py`):**
+`get_trace`, `search_traces`, `get_agent_config` (diskteki dosya çalışandan farklıysa söyler),
+`recent_changes` (git log + son değişen agent dosyaları), `submit_report(findings)`.
+Çıktı yapılandırılmış: `{category, severity, title, root_cause, suggestion, evidence}`; mesajı kod yazar.
+**Yazma yetkisi yok.** Çözüm önerir; uygulamak sahibin kararı.
 
-**Yazma yetkisi yok.** Çözüm önerir (ör. prompt'a eklenecek örnek); uygulamak benim onayımla.
+**3. Ne zaman (`oncall/service.py`):**
+- Her 5 dakikada son 15 dakika: kritik sinyal varsa **anında uyarı**. Uyarı metnini kod yazar, böylece
+  LLM bozukken de gider. Aynı tür uyarı 6 saat tekrarlanmaz.
+- Her gün 08:00 (`ONCALL_REPORT_TIME`, `off` olabilir) ve `/oncall`: son 24 saatin istatistikleri +
+  canary + tüm sinyallerin LLM teşhisi.
+- Mesajlar sahibe gider (ya da `ONCALL_CHAT_ID`), **sohbet geçmişine yazılmaz**.
+- API anahtarı veya token'a benzeyen her şey gönderilmeden önce gizlenir (`redact`).
 
-**Çıktı örneği:**
-> ⚠️ Son 24 saatte 3 mesaj yanlış agent'a gitti; hepsi "…çalıştım" kalıbında, router
-> yeni görev sandı. Öneri: `tasks/agent.yaml` örneklerine ilerleme kaydı cümleleri eklemek.
-> Eval'de bu kalıp 2/5 başarılı.
-
-**Test:** hata enjeksiyonu (`make chaos`): LLM anahtarını boz, scheduler'ı durdur, prompt'u
-bozan bir commit at → oncall doğru teşhisi koyuyor mu?
+**Test (`make chaos`):** Geçici bir veritabanında, gerçek agent'lar ve gerçek modelle 5 hata enjekte
+edilir: bozuk API anahtarı, zaman aşımları, duran zamanlayıcı, bozulmuş agent açıklaması, çöken tool.
+Her biri için "alarm çaldı mı?" (kod) ve "teşhis doğru mu?" (kategori + yer + neden) ayrı ölçülür.
 
 ---
 
@@ -380,7 +388,7 @@ devam eder (polling kaçan mesajları da alır). Kesintisiz çalışma isteyen k
 | **1. Çekirdek + shopping + kurulum** ✅ | `start.sh`, sihirbaz, eşleştirme, Telegram, registry, router, runtime, tracing, shopping agent, `make doctor` | Temiz klondan 2 komutla bot çalışıyor; §2'deki alışveriş satırları geçiyor |
 | **2. tasks + scheduler** ✅ | tasks agent, alışkanlıklar, gece işi, akşam özeti | §2'nin tamamı geçiyor, eval ≥ %90 |
 | **3. Kendini genişleten bot** ✅ | builder agent, `kind: records`, kalıcı hatırlatıcılar, `/agents` | Örnek konuşma (takvim) gerçek modelle uçtan uca çalışıyor; eval ≥ %90 |
-| **4. Oncall** | oncall agent, günlük rapor, chaos testleri | 5 enjekte hatanın ≥ 4'ünü doğru teşhis |
+| **4. Oncall** ✅ | oncall agent, anlık uyarı, günlük rapor, router canary'si, `make chaos` | 5 enjekte hatanın ≥ 4'ünü doğru teşhis |
 | **5. Platformlaşma + yayın** | `make new-agent`, 3. agent'ı 30 dakikada ekleme, Docker, README, demo videosu | Yeni agent çekirdeğe dokunmadan eklendi; repo herkese açık |
 
 ---

@@ -93,9 +93,11 @@ def _record_usage(result: CaseResult, llm: LLMResult) -> None:
     result.tokens_out = llm.tokens_out
 
 
-def run_router_case(provider: LLMProvider, case: dict[str, Any]) -> CaseResult:
+def run_router_case(provider: LLMProvider, case: dict[str, Any], agents: list[Any] | None = None) -> CaseResult:
+    """`agents`: route among these instead of the agents on disk (the on-call
+    canary passes the agents the running bot actually has)."""
     result = CaseResult("router", case["id"], case["message"], case["expect"])
-    agents = list(routing_agents().values())
+    agents = agents if agents is not None else list(routing_agents().values())
     names = [a.name for a in agents]
     messages = [*_history(case), Message.user(case["message"])]
     try:

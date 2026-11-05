@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from zoneinfo import ZoneInfo
 
@@ -18,7 +19,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from erranderpy.assistant import Assistant
 from erranderpy.core import messages
-from erranderpy.core.jobs import Job
+from erranderpy.core.jobs import DISABLED, Job, parse_hhmm
+from erranderpy.oncall.service import Oncall
 from erranderpy.pairing import OWNER_CHAT_KEY, Pairing
 
 log = logging.getLogger(__name__)
@@ -26,10 +28,17 @@ log = logging.getLogger(__name__)
 TELEGRAM_MAX_CHARS = 4096
 TYPING_REFRESH_S = 4  # Telegram shows "typing…" for ~5 s per call
 REMINDER_CHECK_S = 30  # how often due reminders are looked up
+ONCALL_CHECK_S = 300  # how often the on-call agent looks for critical problems
 
 
 def build_application(
-    token: str, assistant: Assistant, pairing: Pairing, language: str, timezone: ZoneInfo
+    token: str,
+    assistant: Assistant,
+    pairing: Pairing,
+    language: str,
+    timezone: ZoneInfo,
+    oncall: Oncall | None = None,
+    oncall_report_at: str = "08:00",
 ) -> Application:
     app = Application.builder().token(token).build()
 
@@ -102,6 +111,48 @@ def build_application(
                 log.info("job %s.%s is turned off", agent.name, job.name)
                 continue
             app.job_queue.run_daily(run_job, time=at.replace(tzinfo=timezone), data=job, name=f"{agent.name}.{job.name}")
+
+    def oncall_chat() -> int | None:
+        """Where on-call messages go: ONCALL_CHAT_ID (e.g. a separate group), else the owner."""
+        chat = os.environ.get("ONCALL_CHAT_ID", "").strip() or assistant.db.get_setting(OWNER_CHAT_KEY)
+        return int(chat) if chat else None
+
+    async def oncall_check(context: ContextTypes.DEFAULT_TYPE) -> None:
+        chat_id = oncall_chat()
+        if oncall is None or chat_id is None:
+            return
+        try:
+            text = await asyncio.to_thread(oncall.check)
+        except Exception:
+            log.exception("on-call check failed")  # the watcher must never crash the bot
+            return
+        if text:
+            await context.bot.send_message(chat_id, text[:TELEGRAM_MAX_CHARS])
+
+    async def oncall_report(context: ContextTypes.DEFAULT_TYPE) -> None:
+        chat_id = oncall_chat()
+        if oncall is None or chat_id is None:
+            return
+        try:
+            text = await asyncio.to_thread(oncall.report)
+        except Exception:
+            log.exception("on-call report failed")
+            return
+        await context.bot.send_message(chat_id, text[:TELEGRAM_MAX_CHARS])
+
+    async def on_oncall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await guard(update) or oncall is None:
+            return
+        async with typing(context, update.effective_chat.id):
+            text = await asyncio.to_thread(oncall.report)
+        await send(update.effective_message, text)
+
+    if oncall is not None:
+        app.job_queue.run_repeating(oncall_check, interval=ONCALL_CHECK_S, first=60, name="oncall.check")
+        if oncall_report_at.strip().lower() not in DISABLED:
+            at = parse_hhmm(oncall_report_at).replace(tzinfo=timezone)
+            app.job_queue.run_daily(oncall_report, time=at, name="oncall.report")
+        app.add_handler(CommandHandler("oncall", on_oncall))
 
     # One-off reminders live in the database; check for due ones every 30 s.
     app.job_queue.run_repeating(send_reminders, interval=REMINDER_CHECK_S, first=5, name="core.reminders")

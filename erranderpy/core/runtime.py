@@ -68,6 +68,7 @@ def run_agent(
     ctx: ToolContext,
     history: list[Message],
     requests: tuple[str, ...] = (),
+    max_steps: int = MAX_STEPS,
 ) -> str:
     assert ctx.tracer is not None
     messages = [*history, Message.user(text)]
@@ -82,7 +83,7 @@ def run_agent(
     nudged = False
     seen: set[tuple[str, str]] = set()  # (tool, arguments) already run in this turn
     skipped: set[str] = set()
-    for step in range(MAX_STEPS):
+    for step in range(max_steps):
         with ctx.tracer.span("agent.llm", agent=agent.name, input=text if step == 0 else f"step {step + 1}") as span:
             result = llm.complete(system, messages, tools=agent.tool_specs)
             span.record_llm(result)
@@ -134,7 +135,7 @@ def run_agent(
                 continue
             return "\n".join(done)  # early exit
 
-    raise TooManySteps(f"agent {agent.name} did not finish in {MAX_STEPS} steps")
+    raise TooManySteps(f"agent {agent.name} did not finish in {max_steps} steps")
 
 
 def _check_message(requests: tuple[str, ...]) -> str:

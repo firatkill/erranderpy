@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 from dotenv import load_dotenv
@@ -10,9 +11,12 @@ from dotenv import load_dotenv
 from erranderpy.assistant import Assistant
 from erranderpy.config import load_settings
 from erranderpy.core.db import Database
+from erranderpy.core.jobs import DISABLED
 from erranderpy.core.llm import ConfigError, select_provider
 from erranderpy.core.registry import AGENTS_DIR, AgentLoadError, load_agents
+from erranderpy.config import ROOT
 from erranderpy.gateway.telegram import build_application
+from erranderpy.oncall.service import Oncall
 from erranderpy.pairing import Pairing
 
 
@@ -52,7 +56,12 @@ def main() -> int:
         print("✓ Paired with your Telegram account")
 
     assistant = Assistant(llm, agents, db, settings.timezone, settings.language, agent_dirs)
-    app = build_application(settings.telegram_token, assistant, pairing, settings.language, settings.timezone)
+    oncall = Oncall(llm, db, lambda: assistant.agents, settings.language, repo_root=ROOT)
+    report_at = os.environ.get("ONCALL_REPORT_TIME", "").strip() or "08:00"
+    print(f"✓ On-call: checks every 5 min, report " + ("off" if report_at.lower() in DISABLED else f"every day at {report_at}"))
+    app = build_application(
+        settings.telegram_token, assistant, pairing, settings.language, settings.timezone, oncall, report_at
+    )
     print("✅ Ready. Write to your bot on Telegram. (Ctrl+C to stop)")
     app.run_polling(allowed_updates=["message"])
     return 0

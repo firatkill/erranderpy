@@ -17,8 +17,8 @@
   wrong decisions, then reports back to you on Telegram.
 - **Two commands to run.** `git clone` and `./start.sh`. No Docker, no database server.
 
-> 🚧 **Status: Stage 3.** Shopping, tasks and habits, and abilities the bot adds to itself (with reminders).
-> The on-call agent comes next.
+> 🚧 **Status: Stage 4.** Shopping, tasks and habits, abilities the bot adds to itself (with reminders),
+> and an on-call agent that watches the bot. Packaging and release come next.
 > Follow progress in [SPEC.md](SPEC.md).
 
 ## Quick start
@@ -46,6 +46,25 @@ bot: 🔎 router.decide · 1.9s → shopping … tool.call add_items · 0.00s �
 
 `/status` shows the active model and today's usage; `make doctor` checks the whole setup.
 
+## On-call
+
+The bot watches itself. Code checks the traces every 5 minutes and alerts at once on critical
+problems (rejected API key, LLM outage, a crashing tool, reminders not going out). The alert is
+written by code, so it still arrives when the LLM is the thing that's broken. Every morning at 08:00
+(or on `/oncall`) an on-call agent reads the signals, opens traces and agent configs with read-only
+tools, and explains what went wrong and what to change:
+
+```
+🩺 Oncall raporu · son 24 saat
+📊 31 mesaj · 66 LLM çağrısı · $0.0070 · p95 6.8 sn · 0 başarısız mesaj
+
+🟠 Alışveriş mesajları tasks agent'ına gidiyor
+   Neden: Çalışan shopping açıklaması hava durumuyla ilgili; router alışverişi tanımıyor.
+   Öneri: agents/shopping/agent.yaml açıklamasını geri al ve botu yeniden başlat.
+```
+
+`make chaos` breaks the bot on purpose in five ways and checks that on-call notices and explains each.
+
 ## Adding an agent
 
 Create `agents/<name>/` with an `agent.yaml` and a `tools.py`. That's it: the router picks it up
@@ -59,6 +78,7 @@ make test       # offline tests, no API calls
 make test-live  # contract tests against every provider with a key in .env (< $0.01)
 make eval       # Turkish eval set with the provider the bot would use
 make compare    # same eval set on every provider with a key → reports/eval-*.md
+make chaos      # inject 5 faults, check on-call alerts and diagnoses (a few cents)
 ```
 
 ## Eval results
@@ -81,7 +101,7 @@ too easy to tell models apart, so harder cases are next.
 | 1 | Core (router, agent runtime, tracing), shopping agent, `start.sh` setup | ✅ |
 | 2 | Tasks & habits agent, nightly scheduler, evening summary | ✅ |
 | 3 | Self-extending bot: builder agent, declarative agents, reminders | ✅ |
-| 4 | On-call agent and chaos tests | ⏳ |
+| 4 | On-call agent, online eval (canary), chaos tests | ✅ |
 | 5 | `make new-agent`, Docker, public release | ⏳ |
 
 ## License

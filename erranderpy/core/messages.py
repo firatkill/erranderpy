@@ -16,7 +16,7 @@ CORE_MESSAGES: dict[str, dict[str, str]] = {
         "not_paired": "Bu bot henüz eşleştirilmedi. Botu kuran kişi, terminalde görünen 6 haneli kodu buraya göndermeli.",
         "paired": "✅ Eşleşme tamam! Artık bana yazabilirsin.\n\nÖrnek: \"zeytinyağı almam lazım\"",
         "help": "Bana normal cümlelerle yaz, gerisini ben hallederim.\n\nŞunları yapabiliyorum:\n{agents}\n\n"
-        "Komutlar:\n/agents · yeteneklerim\n/status · aktif model ve bugünkü kullanım\n/trace · son mesajını nasıl işlediğim",
+        "Komutlar:\n/agents · yeteneklerim\n/status · aktif model ve bugünkü kullanım\n/trace · son mesajını nasıl işlediğim\n/oncall · sağlık raporu (hatalar ve teşhis)",
         "status": "🤖 {provider} / {model}\n📅 Bugün: {messages} mesaj, {calls} LLM çağrısı, {tokens} token, ${cost}",
         "no_trace": "Henüz işlenmiş bir mesajın yok.",
         "late_prefix": "(gecikmeli)",
@@ -33,7 +33,7 @@ CORE_MESSAGES: dict[str, dict[str, str]] = {
         "not_paired": "This bot isn't paired yet. Whoever set it up should send the 6-digit code shown in their terminal.",
         "paired": "✅ Paired! You can talk to me now.\n\nTry: \"I need olive oil\"",
         "help": "Just write to me in plain sentences.\n\nThis is what I can do:\n{agents}\n\n"
-        "Commands:\n/agents · what I can do\n/status · active model and today's usage\n/trace · how I handled your last message",
+        "Commands:\n/agents · what I can do\n/status · active model and today's usage\n/trace · how I handled your last message\n/oncall · health report (errors and diagnosis)",
         "status": "🤖 {provider} / {model}\n📅 Today: {messages} messages, {calls} LLM calls, {tokens} tokens, ${cost}",
         "no_trace": "You don't have a handled message yet.",
         "late_prefix": "(late)",
