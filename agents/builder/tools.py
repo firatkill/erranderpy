@@ -1,6 +1,6 @@
 """The agent builder: lets the bot add new abilities to itself, from chat.
 
-Safety by design (docs/decisions/0013-builder-onayli-ve-kodsuz.md):
+Safety by design (ADR-0013 in AGENTS.md):
 - It never writes code. It writes one YAML file, a RecordsSpec, validated by
   Pydantic before anything is saved; the platform builds the tools from it.
 - Nothing is created without the user's "yes": propose first, create after.

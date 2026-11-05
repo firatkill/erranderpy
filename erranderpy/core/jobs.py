@@ -8,7 +8,7 @@ An agent's optional `jobs.py` marks functions with `@daily`:
 
 The gateway schedules every job (Telegram's JobQueue, built on APScheduler).
 Jobs don't call the LLM: they are plain code, so they are cheap and predictable.
-See docs/decisions/0010-zamanlanmis-isler.md.
+See ADR-0010 in AGENTS.md.
 """
 
 from __future__ import annotations

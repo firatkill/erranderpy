@@ -1,5 +1,5 @@
 # Replies are written by code from these templates, not by the LLM:
-# consistent, instant, and one LLM call cheaper (docs/decisions/0008-kod-yazar-onay-erken-cikis.md).
+# consistent, instant, and one LLM call cheaper (ADR-0008 in AGENTS.md).
 tr:
   added: "🛒 Ekledim: {items}."
   updated: "✏️ Güncelledim: {items}."

@@ -74,5 +74,5 @@ make eval     # includes the cases in your evals.yaml
 
 Never copy sentences from `evals.yaml` into `examples`: the eval would measure recall, not understanding.
 
-See `notes/` for an agent built from the template, `shopping/` for a complete example, and the [decision record](../docs/decisions/0009-agent-eklenti-sozlesmesi.md)
+See `notes/` for an agent built from the template, `shopping/` for a complete example, and the decision record (ADR-0009 in [AGENTS.md](../AGENTS.md))
 for why it works this way.

@@ -67,7 +67,7 @@ class ToolResult:
 
     If `final` is True, `text` is also the reply to the user and the agent loop
     stops without asking the model to rephrase it: one LLM call saved per
-    message. See docs/decisions/0008-kod-yazar-onay-erken-cikis.md.
+    message. See ADR-0008 in AGENTS.md.
     """
 
     text: str

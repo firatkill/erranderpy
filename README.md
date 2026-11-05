@@ -144,6 +144,12 @@ correctly and 5 were diagnosed correctly, in 2 runs.
 | 4 | On-call agent, online eval (canary), chaos tests | ✅ |
 | 5 | `make new-agent` + notes agent, `make service`, Docker, CI | ✅ |
 
+## Working on it
+
+[AGENTS.md](AGENTS.md) is the guide for changing the code: the map, the principles, the conventions,
+and a short record of every design decision and why it was made. [SPEC.md](SPEC.md) is the
+feature spec (in Turkish).
+
 ## License
 
 [MIT](LICENSE)

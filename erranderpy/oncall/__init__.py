@@ -9,5 +9,5 @@
                          service.py (when: every 5 min for alerts, 08:00 report, /oncall)
 
 It is not in agents/: the router never sends user messages to it, and its
-messages never enter the chat history. See docs/decisions/0018-oncall.md.
+messages never enter the chat history. See ADR-0018 in AGENTS.md.
 """

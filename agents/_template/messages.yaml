@@ -1,5 +1,5 @@
 # Replies are written by code from these templates, not by the LLM
-# (docs/decisions/0008-kod-yazar-onay-erken-cikis.md).
+# (ADR-0008 in AGENTS.md).
 tr:
   added: "✅ Kaydettim (#{id}): {text}"
   header: "🧩 {{Name}}:"

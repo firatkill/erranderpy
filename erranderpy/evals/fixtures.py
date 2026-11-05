@@ -8,7 +8,7 @@ it became a real agent in Stage 2, so the list is empty for now.
 
 Important: the few-shot `examples` of a prototype must never be copied from the
 eval datasets. If they were, a model could score well by recognizing the
-sentence instead of understanding it (overfitting).
+sentence instead of understanding it (overfitting). See "Evals" in AGENTS.md.
 """
 
 from __future__ import annotations

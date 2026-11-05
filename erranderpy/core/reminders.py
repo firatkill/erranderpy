@@ -5,7 +5,7 @@ survive restarts. The gateway checks for due reminders every 30 seconds
 (`take_due`). If the bot was off when one was due, it is still sent late
 (marked as such) within LATE_WINDOW; older ones are marked missed and dropped,
 because "your 9:00 meeting" arriving at 18:00 only confuses.
-See docs/decisions/0014-kalici-hatirlaticilar.md.
+See ADR-0014 in AGENTS.md.
 """
 
 from __future__ import annotations

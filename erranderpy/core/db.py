@@ -2,7 +2,7 @@
 
 We use Python's built-in `sqlite3` with plain SQL so every query is visible
 and there is nothing extra to install. Agents bring their own tables in
-`agents/<name>/schema.sql`. See docs/decisions/0005-sqlite.md.
+`agents/<name>/schema.sql`. See ADR-0005 in AGENTS.md.
 
 All timestamps are stored as UTC ISO-8601 strings ("2026-11-04T15:13:16+00:00"),
 which sort correctly as text.

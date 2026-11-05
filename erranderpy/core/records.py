@@ -5,7 +5,7 @@ user before a date/time field. From the spec the platform builds the four
 tools (add/list/update/delete), their JSON schemas, the system prompt and the
 replies. This is what lets the bot create new abilities for itself safely:
 the builder agent only writes a validated spec; every line of code that runs
-is code we wrote and tested. See docs/decisions/0012-bildirimsel-agentlar.md.
+is code we wrote and tested. See ADR-0012 in AGENTS.md.
 
     name: calendar
     kind: records

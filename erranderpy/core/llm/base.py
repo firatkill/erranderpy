@@ -3,7 +3,7 @@
 Everything above this layer (router, agents, evals) only sees the types in this
 file. Adapters (`openai_compat.py`, `anthropic_native.py`) translate them to and
 from each provider's wire format, so swapping providers never touches agent code.
-See docs/decisions/0002-coklu-llm-iki-adapter.md.
+See ADR-0002 in AGENTS.md.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ Role = Literal["user", "assistant", "tool"]
 # We deliberately expose only "auto" and "none". Forcing a tool call works
 # differently (or not at all) across providers and reasoning modes, so callers
 # ask for a tool in the prompt and validate the result instead.
-# See docs/decisions/0006-tool-choice-auto.md.
+# See ADR-0006 in AGENTS.md.
 ToolChoice = Literal["auto", "none"]
 
 

@@ -1,4 +1,4 @@
-# Replies are written by code from these templates (docs/decisions/0008-kod-yazar-onay-erken-cikis.md).
+# Replies are written by code from these templates (ADR-0008 in AGENTS.md).
 tr:
   habit_created: "🔁 Yeni alışkanlık: {name}, günde {minutes} dk. Bugünden başlıyoruz."
   habit_created_open: "🔁 Yeni alışkanlık: {name}. Günde kaç dakika ayırmak istersin? (Ör. \"{name} 15 dk olsun\"). Süresiz de bırakabiliriz."

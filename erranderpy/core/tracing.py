@@ -3,7 +3,7 @@
 One incoming message = one trace (a short random `trace_id`). Each step inside
 it (router decision, LLM call, tool call) is a span: a row in the `traces`
 table with its input, output, duration, tokens, cost and error.
-The on-call agent (Stage 3) reads this table.
+The on-call agent (erranderpy/oncall) reads this table.
 """
 
 from __future__ import annotations

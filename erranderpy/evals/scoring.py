@@ -2,7 +2,7 @@
 
 Because the LLM only *decides* (which agent, which tool, which arguments) and
 never produces free text we have to judge, almost everything here is an exact
-comparison after light normalization. See docs/decisions/0003-llm-karar-verir-kod-yapar.md.
+comparison after light normalization. See ADR-0003 in AGENTS.md.
 """
 
 from __future__ import annotations

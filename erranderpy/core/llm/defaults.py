@@ -4,7 +4,7 @@ This is the single place to edit when a provider ships a new cheap model or
 changes a parameter. Each spec also encodes the provider's quirks: these
 settings make every provider answer *fast and cheap*, which is what our
 decision-making calls (routing, picking a tool) need.
-See docs/decisions/0007-hizli-karar-modu.md.
+See ADR-0007 in AGENTS.md.
 """
 
 from __future__ import annotations
